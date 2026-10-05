@@ -156,6 +156,7 @@ def process_gold_layer() -> pl.DataFrame:
             water_mode=water_mode,
             pressure_begin=p_begin,
             nominal_pressure=p_nom,
+            running_status=row.get("running_status") or "Running",
         )
         pump_anomaly_flags.append(is_pump_anom)
         # Real irrigation: pump commanded Wet AND actual pressure verified

@@ -64,6 +64,12 @@
           <span id="ws-status-text">Ao Vivo (WebSocket)</span>
         </div>
 
+        <button id="btn-toggle-alerts" class="relative flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition" title="Abrir Painel Lateral de Alertas">
+          <i data-lucide="bell" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>Alertas</span>
+          <span id="alerts-badge-count" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-red-600 text-white animate-pulse">0</span>
+        </button>
+
         <a href="/docs" target="_blank" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition">
           <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
           <span>Scalar Docs</span>
@@ -315,62 +321,101 @@
 
   </main>
 
-  <!-- HUMAN-IN-THE-LOOP (HITL) SAFETY MODAL -->
-  <div id="modal-hitl" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl scada-alert-glow animate-bounce-short">
-      
-      <div class="flex items-start space-x-3.5">
-        <div class="w-12 h-12 rounded-xl bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-400 flex-shrink-0">
-          <i data-lucide="shield-alert" class="w-7 h-7"></i>
+  <!-- PAINEL LATERAL DE ALERTAS & HITL (DRAWER NÃO-INTRUSIVO) -->
+  <aside id="drawer-alerts" class="fixed top-0 right-0 h-full w-[420px] max-w-[92vw] bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+    
+    <!-- Drawer Header -->
+    <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <i data-lucide="bell" class="w-4 h-4"></i>
         </div>
         <div>
-          <span class="px-2 py-0.5 rounded text-[11px] font-bold tracking-wider uppercase bg-red-500/20 text-red-300 border border-red-500/30">
-            Ação com Efeito Colateral Físico (HITL)
-          </span>
-          <h3 class="text-lg font-bold text-white mt-1">Autorização de Intervenção SCADA / CLP</h3>
-          <p class="text-xs text-slate-400">O agente de IA identificou risco operacional e solicita intervenção.</p>
+          <h2 class="text-sm font-bold text-white">Central de Alertas & HITL</h2>
+          <p class="text-[11px] text-slate-400">Supervisão de Falhas e Intervenções de IA</p>
         </div>
       </div>
-
-      <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2 text-xs">
-        <div class="flex justify-between">
-          <span class="text-slate-400">Ticket ID:</span>
-          <span class="font-mono text-slate-200" id="hitl-ticket-id">HITL-STOP-14863</span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-400">Equipamento Alvo:</span>
-          <span class="font-semibold text-white" id="hitl-pivot-target">Pivô Haak 1 (Fazenda VB Homestead)</span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-400">Comando Solicitado:</span>
-          <span class="font-bold text-red-400" id="hitl-command-name">PARADA DE EMERGÊNCIA DA BOMBA</span>
-        </div>
-        <div class="mt-2 pt-2 border-t border-slate-800">
-          <span class="text-slate-400 block mb-1">Diagnóstico da IA / Causa-Raiz:</span>
-          <p class="text-red-300 italic" id="hitl-reason-text">Queda severa de pressão detectada com bomba em regime WET (Risco de cavitação ou vazamento).</p>
-        </div>
-      </div>
-
-      <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300">
-        <p class="flex items-center gap-1.5 font-semibold">
-          <i data-lucide="lock" class="w-4 h-4"></i>
-          Guardrail Inviolável de Governança
-        </p>
-        <p class="mt-0.5 text-amber-200/80">O protocolo MCP impede que o modelo execute este comando de forma autônoma. Apenas a aprovação explícita do operador humano desarmará o relé do CLP.</p>
-      </div>
-
-      <div class="flex items-center justify-end space-x-3 pt-2">
-        <button id="btn-hitl-reject" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition">
-          Rejeitar Intervenção (Sobrescrever IA)
+      <div class="flex items-center space-x-2">
+        <span id="drawer-badge-status" class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          Nominal
+        </span>
+        <button id="btn-close-drawer" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" title="Fechar Painel">
+          <i data-lucide="x" class="w-5 h-5"></i>
         </button>
-        <button id="btn-hitl-approve" class="px-5 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center space-x-1.5 shadow-lg shadow-red-600/30">
-          <i data-lucide="power" class="w-4 h-4"></i>
-          <span>Aprovar Desarme no CLP</span>
-        </button>
+      </div>
+    </div>
+
+    <!-- Drawer Body -->
+    <div class="flex-1 overflow-y-auto p-5 space-y-4">
+      
+      <!-- Seção de Ação HITL Crítica (Aparece apenas se houver pendência) -->
+      <div id="hitl-action-card" class="hidden bg-slate-950 border-2 border-red-500/80 rounded-2xl p-4 space-y-3 shadow-xl scada-alert-glow">
+        <div class="flex items-start space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <i data-lucide="shield-alert" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500/20 text-red-300">
+              Intervenção Solicitada (HITL)
+            </span>
+            <h3 class="text-xs font-bold text-white mt-1" id="hitl-command-name">PARADA DE EMERGÊNCIA</h3>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 rounded-xl p-3 text-xs space-y-1.5 border border-slate-800">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Equipamento:</span>
+            <span class="font-semibold text-slate-200" id="hitl-pivot-target">Pivô Haak 1 (#14863)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Ticket:</span>
+            <span class="font-mono text-slate-300 text-[11px]" id="hitl-ticket-id">HITL-STOP-14863</span>
+          </div>
+          <div class="pt-1 border-t border-slate-800">
+            <span class="text-slate-400 block text-[11px] mb-0.5">Motivo / Causa-Raiz:</span>
+            <p class="text-red-300 italic text-[11px]" id="hitl-reason-text">Queda severa de pressão com bomba em regime WET.</p>
+          </div>
+        </div>
+
+        <div class="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300">
+          <p class="flex items-center gap-1 font-semibold">
+            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+            Guardrail MCP Ativo
+          </p>
+          <p class="mt-0.5 text-amber-200/80">O comando só será transmitido ao CLP após confirmação do operador humano.</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button id="btn-hitl-reject" class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition">
+            Dispensar Alerta
+          </button>
+          <button id="btn-hitl-approve" class="px-3 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center justify-center space-x-1 shadow-lg shadow-red-600/30">
+            <i data-lucide="power" class="w-3.5 h-3.5"></i>
+            <span>Aprovar CLP</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feed / Histórico de Alertas Recentes -->
+      <div class="space-y-2">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Histórico de Eventos & Alertas</h3>
+        <div id="alerts-history-list" class="space-y-2 text-xs">
+          <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 text-slate-400 flex items-center space-x-2">
+            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
+            <span>Sistema operando em regime nominal. Telemetria normalizada.</span>
+          </div>
+        </div>
       </div>
 
     </div>
-  </div>
+
+    <!-- Drawer Footer -->
+    <div class="p-3.5 border-t border-slate-800 bg-slate-950/60 text-[11px] text-slate-500 flex justify-between items-center">
+      <span>Protocolo: FastMCP SSE</span>
+      <span>Harness Antigravity Tier 2</span>
+    </div>
+
+  </aside>
 
   <!-- FOOTER -->
   <footer class="bg-slate-900 border-t border-slate-800 px-6 py-4 mt-auto text-xs text-slate-500">

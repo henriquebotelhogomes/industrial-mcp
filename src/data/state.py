@@ -28,66 +28,67 @@ class TelemetryStateManager:
         self.lock = asyncio.Lock()
         self.subscribers: set[asyncio.Queue] = set()
 
-    def load_telemetry_series(self, equip_id: int | None = None) -> int:
-        """Loads historical telemetry sequence for replay from DuckDB/Parquet."""
+    def load_telemetry_series(self, equip_id: int | None = 14863) -> int:
+        """Loads smooth continuous operational telemetry sequence based on real equipment specs."""
+        target_id = equip_id or 14863
+        farm_name = "VB Homestead"
+        pivot_name = "Haak 1"
+        maker = "Valmont"
+        model = "Valley 8000C"
+        nom_pressure = 3.4
+        radius = 380.0
+        flow = 185.0
+
         try:
             con = duckdb.connect(str(settings.duckdb_path), read_only=True)
-            filter_clause = f"WHERE id_equip = {equip_id}" if equip_id else ""
-            query = f"""
-                SELECT
-                    id_farm, id_equip, farm_name, pivot_name, pivot_maker, pivot_model,
-                    nominal_pressure, pivot_radius, timestamp, current_angle, direction,
-                    running_status, water_mode, percent_timer, pressure_begin, pressure_end,
-                    flow_rate
+            specs = con.execute(f"""
+                SELECT farm_name, pivot_name, pivot_maker, pivot_model, nominal_pressure, pivot_radius, flow_rate
                 FROM v_gold_metrics
-                {filter_clause}
-                ORDER BY timestamp ASC
-            """
-            rows = con.execute(query).fetchall()
-            cols = [
-                "id_farm", "id_equip", "farm_name", "pivot_name", "pivot_maker", "pivot_model",
-                "nominal_pressure", "pivot_radius", "timestamp", "current_angle", "direction",
-                "running_status", "water_mode", "percent_timer", "pressure_begin", "pressure_end",
-                "flow_rate"
-            ]
+                WHERE id_equip = {target_id}
+                LIMIT 1
+            """).fetchone()
             con.close()
-
-            self.telemetry_history = [dict(zip(cols, r, strict=False)) for r in rows]
-            if not self.telemetry_history:
-                self._load_fallback_baseline()
-            logger.info("telemetry_series_loaded", total_records=len(self.telemetry_history))
-            return len(self.telemetry_history)
+            if specs:
+                farm_name = specs[0] or farm_name
+                pivot_name = specs[1] or pivot_name
+                maker = specs[2] or maker
+                model = specs[3] or model
+                nom_pressure = float(specs[4]) if specs[4] else nom_pressure
+                if nom_pressure > 10.0:
+                    nom_pressure = round(nom_pressure / 10.0, 2)
+                radius = float(specs[5]) if specs[5] else radius
+                flow = float(specs[6]) if specs[6] else flow
         except Exception as e:
-            logger.warn("duckdb_load_failed_using_fallback", error=str(e))
-            self._load_fallback_baseline()
-            return len(self.telemetry_history)
+            logger.warn("duckdb_query_fallback", error=str(e))
 
-    def _load_fallback_baseline(self) -> None:
-        """Generates realistic continuous operational baseline if historical database is cold."""
         baseline = []
         angle = 0.0
         for _i in range(360):
-            angle = (angle + 1.0) % 360.0
             baseline.append({
                 "id_farm": 1515,
-                "id_equip": 14863,
-                "farm_name": "VB Homestead",
-                "pivot_name": "Haak 1",
-                "pivot_maker": "Valmont",
-                "pivot_model": "Valley 8000C",
-                "nominal_pressure": 3.4,
-                "pivot_radius": 380.0,
+                "id_equip": target_id,
+                "farm_name": farm_name,
+                "pivot_name": pivot_name,
+                "pivot_maker": maker,
+                "pivot_model": model,
+                "nominal_pressure": nom_pressure,
+                "pivot_radius": radius,
                 "timestamp": datetime.now().isoformat(),
                 "current_angle": round(angle, 1),
                 "direction": "Forward",
                 "running_status": "Running",
                 "water_mode": "Wet",
                 "percent_timer": 65.0,
-                "pressure_begin": 3.4,
-                "pressure_end": 2.9,
-                "flow_rate": 185.0,
+                "pressure_begin": round(nom_pressure - 0.1, 2),
+                "pressure_end": round(nom_pressure * 0.82, 2),
+                "flow_rate": flow,
             })
+            angle = (angle + 1.0) % 360.0
+
         self.telemetry_history = baseline
+        self.current_index = 0
+        logger.info("telemetry_series_loaded", equip_id=target_id, pivot_name=pivot_name, total_records=len(baseline))
+        return len(baseline)
 
     async def advance_tick(self) -> dict[str, Any]:
         """Advances the telemetry stream simulation by one time step."""
@@ -109,7 +110,7 @@ class TelemetryStateManager:
                 raw_item["water_mode"] = "Wet"
                 raw_item["pressure_begin"] = 0.35  # Severe pressure loss below 1.2 bar
                 logger.warn("anomaly_injected_live", type="pressure_drop", pressure=0.35)
-                # Keep one-shot or until reset
+                # Keep active until operator clears or approves
 
             elif self.injected_anomaly == "sensor_spike":
                 raw_item["percent_timer"] = 150.0  # Physically impossible percent timer
@@ -215,6 +216,10 @@ class TelemetryStateManager:
 
             self.pending_hitl_ticket = None
             self.injected_anomaly = None
+            if self.active_anomaly_report:
+                self.active_anomaly_report.is_anomaly = False
+                self.active_anomaly_report.requires_operator_approval = False
+                self.active_anomaly_report.anomaly_types = []
             logger.warn("hitl_action_rejected_by_operator", ticket_id=ticket_id)
             return {"status": "REJECTED", "message": "Intervenção cancelada pelo operador humano."}
 

@@ -68,6 +68,8 @@ class OperationalAnomalyDetector:
             angular_speed = (event.percent_timer / 100.0) * 1.5
 
         p_begin = max(0.0, event.pressure_begin)
+        if p_begin > 10.0:
+            p_begin = p_begin / 10.0
         p_ratio = (event.pressure_end / p_begin) if p_begin > 0.1 else 0.0
         flow = event.flow_rate
 
@@ -90,13 +92,14 @@ class OperationalAnomalyDetector:
             water_mode=event.water_mode,
             pressure_begin=event.pressure_begin,
             nominal_pressure=event.nominal_pressure,
+            running_status=event.running_status,
         )
         if is_pump_anomaly and pump_msg:
             anomalies.append(pump_msg)
             requires_hitl = True
 
         # 2. Deterministic Domain Rule: Encoder Angular Jump
-        if prev_event:
+        if prev_event and prev_event.id_equip == event.id_equip and event.running_status.lower() == "running":
             is_jump, jump_msg = DomainRuleEngine.detect_encoder_jump(
                 previous_angle=prev_event.current_angle,
                 current_angle=event.current_angle,

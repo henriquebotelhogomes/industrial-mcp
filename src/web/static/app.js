@@ -45,8 +45,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const watchdogAlertText = document.getElementById("watchdog-alert-text");
   const mcpLogContainer = document.getElementById("mcp-log-container");
 
-  // HITL Modal elements
-  const modalHitl = document.getElementById("modal-hitl");
+  // Side Drawer Elements
+  const drawerAlerts = document.getElementById("drawer-alerts");
+  const btnToggleAlerts = document.getElementById("btn-toggle-alerts");
+  const btnCloseDrawer = document.getElementById("btn-close-drawer");
+  const alertsBadgeCount = document.getElementById("alerts-badge-count");
+  const drawerBadgeStatus = document.getElementById("drawer-badge-status");
+  const hitlActionCard = document.getElementById("hitl-action-card");
+  const alertsHistoryList = document.getElementById("alerts-history-list");
   const hitlTicketId = document.getElementById("hitl-ticket-id");
   const hitlPivotTarget = document.getElementById("hitl-pivot-target");
   const hitlCommandName = document.getElementById("hitl-command-name");
@@ -351,12 +357,12 @@ document.addEventListener("DOMContentLoaded", () => {
       watchdogAlertBox.classList.add("hidden");
     }
 
-    // 5. Handle Human-in-the-Loop (HITL) Safety Modal
+    // 5. Handle Human-in-the-Loop (HITL) Alert in Side Drawer
     if (ticket && ticket.status === "AWAITING_OPERATOR_APPROVAL") {
       activeHitlTicket = ticket;
-      showHitlModal(ticket);
-    } else if (!ticket && modalHitl && !modalHitl.classList.contains("hidden")) {
-      hideHitlModal();
+      showHitlAlert(ticket);
+    } else if (!ticket && hitlActionCard && !hitlActionCard.classList.contains("hidden")) {
+      clearHitlAlert();
     }
 
     if (window.lucide) {
@@ -365,20 +371,77 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // -------------------------------------------------------------------------
-  // 4. Human-in-the-Loop (HITL) Modal Actions
+  // 4. Side Drawer & Human-in-the-Loop (HITL) Alert Actions
   // -------------------------------------------------------------------------
 
-  function showHitlModal(ticket) {
+  function openDrawer() {
+    if (drawerAlerts) {
+      drawerAlerts.classList.remove("translate-x-full");
+    }
+  }
+
+  function closeDrawer() {
+    if (drawerAlerts) {
+      drawerAlerts.classList.add("translate-x-full");
+    }
+  }
+
+  if (btnToggleAlerts) {
+    btnToggleAlerts.addEventListener("click", () => {
+      if (drawerAlerts && drawerAlerts.classList.contains("translate-x-full")) {
+        openDrawer();
+      } else {
+        closeDrawer();
+      }
+    });
+  }
+
+  if (btnCloseDrawer) {
+    btnCloseDrawer.addEventListener("click", closeDrawer);
+  }
+
+  function showHitlAlert(ticket) {
     hitlTicketId.textContent = ticket.ticket_id;
     hitlPivotTarget.textContent = `${ticket.pivot_name} (#${ticket.pivot_id})`;
     hitlCommandName.textContent = ticket.action_required || "PARADA DE EMERGÊNCIA";
     hitlReasonText.textContent = ticket.reasons?.join("; ") || "Anomalia severa de pressão e cavitação.";
-    modalHitl.classList.remove("hidden");
-    addMcpLog(`[HITL GATE] Ticket gerado: ${ticket.ticket_id} aguardando autorização humana.`);
+
+    hitlActionCard.classList.remove("hidden");
+
+    // Update alert badges
+    alertsBadgeCount.textContent = "1";
+    alertsBadgeCount.classList.remove("hidden");
+    drawerBadgeStatus.textContent = "1 Alerta Crítico";
+    drawerBadgeStatus.className = "px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse";
+
+    // Append to history list if not already present
+    const existing = document.getElementById(`history-${ticket.ticket_id}`);
+    if (!existing) {
+      const timeStr = new Date().toLocaleTimeString();
+      const itemDiv = document.createElement("div");
+      itemDiv.id = `history-${ticket.ticket_id}`;
+      itemDiv.className = "bg-red-950/40 border border-red-500/40 rounded-xl p-3 text-red-200 space-y-1";
+      itemDiv.innerHTML = `
+        <div class="flex items-center justify-between font-bold text-red-400">
+          <span class="flex items-center gap-1.5"><i data-lucide="alert-octagon" class="w-3.5 h-3.5"></i> ${ticket.action_required || "Intervenção Solicitada"}</span>
+          <span class="text-[10px] text-slate-400 font-mono">${timeStr}</span>
+        </div>
+        <p class="text-[11px] text-red-300/90">${ticket.reasons?.join("; ") || "Anomalia detectada"}</p>
+      `;
+      alertsHistoryList.prepend(itemDiv);
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // Slide drawer in gently on the right
+    openDrawer();
+    addMcpLog(`[HITL GATE] Ticket gerado: ${ticket.ticket_id} no painel lateral.`);
   }
 
-  function hideHitlModal() {
-    modalHitl.classList.add("hidden");
+  function clearHitlAlert() {
+    hitlActionCard.classList.add("hidden");
+    alertsBadgeCount.classList.add("hidden");
+    drawerBadgeStatus.textContent = "Nominal";
+    drawerBadgeStatus.className = "px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
     activeHitlTicket = null;
   }
 
@@ -391,7 +454,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }));
     }
     addMcpLog(`[HITL APPROVED] Operador confirmou desarme da bomba para ${activeHitlTicket.ticket_id}. Sinal transmitido ao CLP.`);
-    hideHitlModal();
+    clearHitlAlert();
   });
 
   btnHitlReject.addEventListener("click", () => {
@@ -402,8 +465,8 @@ document.addEventListener("DOMContentLoaded", () => {
         ticket_id: activeHitlTicket.ticket_id
       }));
     }
-    addMcpLog(`[HITL REJECTED] Operador rejeitou a intervenção proposta pela IA.`);
-    hideHitlModal();
+    addMcpLog(`[HITL DISMISSED] Operador dispensou o alerta.`);
+    clearHitlAlert();
   });
 
   // -------------------------------------------------------------------------

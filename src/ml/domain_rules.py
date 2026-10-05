@@ -52,13 +52,19 @@ class DomainRuleEngine:
         water_mode: str,
         pressure_begin: float,
         nominal_pressure: float | None = None,
+        running_status: str = "Running",
     ) -> tuple[bool, str | None]:
         """Cross-checks pump/water mode against physical pressure line readings.
 
         Mitigates false positives from legacy systems:
-        If water_mode is 'Wet' (pump commanded ON), but pressure is below min threshold,
-        indicates either pump cavitation, pipe burst, dry well, or false control feedback.
+        If equipment is STOPPED, zero pressure is nominal.
+        If water_mode is 'Wet' (pump commanded ON) AND running_status is 'Running',
+        but pressure is below min threshold, indicates either pump cavitation,
+        pipe burst, dry well, or false control feedback.
         """
+        if running_status.lower() != "running":
+            return False, None
+
         threshold = cls.MIN_OPERATIONAL_PRESSURE_BAR
         if nominal_pressure and nominal_pressure > 0:
             threshold = max(0.8, nominal_pressure * 0.4)

@@ -45,6 +45,15 @@ def test_pump_pressure_congruence():
     )
     assert is_anomaly_normal is False
 
+    # Machine stopped -> 0 pressure is nominal and must NOT trigger anomaly
+    is_anomaly_stopped, _ = DomainRuleEngine.validate_pump_pressure_congruence(
+        water_mode="Wet",
+        pressure_begin=0.0,
+        nominal_pressure=3.2,
+        running_status="Stopped",
+    )
+    assert is_anomaly_stopped is False
+
 
 def test_unit_conversions():
     # 77 Fahrenheit = 25 Celsius

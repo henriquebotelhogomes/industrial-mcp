@@ -1,7 +1,9 @@
 """Root entrypoint to run the Industrial-MCP SCADA Dashboard & API."""
 
 import sys
+
 import uvicorn
+
 from src.config import settings
 
 # Ensure UTF-8 output on Windows console
