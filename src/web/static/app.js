@@ -60,6 +60,22 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnHitlApprove = document.getElementById("btn-hitl-approve");
   const btnHitlReject = document.getElementById("btn-hitl-reject");
 
+  // Asset Selector DOM elements
+  const inputFarmSearch = document.getElementById("input-farm-search");
+  const selectFarm = document.getElementById("select-farm");
+  const selectEquipType = document.getElementById("select-equip-type");
+  const inputEquipSearch = document.getElementById("input-equip-search");
+  const selectEquipment = document.getElementById("select-equipment");
+  const btnApplyEquipment = document.getElementById("btn-apply-equipment");
+
+  const badgeActiveEquip = document.getElementById("badge-active-equip");
+  const badgeActiveMaker = document.getElementById("badge-active-maker");
+  const badgeActiveRadius = document.getElementById("badge-active-radius");
+  const badgeActivePressure = document.getElementById("badge-active-pressure");
+
+  const headerFarmName = document.getElementById("header-farm-name");
+  const headerPivotName = document.getElementById("header-pivot-name");
+
   // -------------------------------------------------------------------------
   // 1. Initialize Highcharts Charts
   // -------------------------------------------------------------------------
@@ -261,6 +277,28 @@ document.addEventListener("DOMContentLoaded", () => {
     currentSpeed = data.speed;
     updatePlaybackControls();
 
+    // 0. Update Header & Active Asset Badges
+    if (headerFarmName && tel.farm_name) {
+      headerFarmName.textContent = `Fazenda ${tel.farm_name}`;
+    }
+    if (headerPivotName && tel.pivot_name) {
+      const maker = tel.pivot_maker || "Valmont";
+      const model = tel.pivot_model || "";
+      headerPivotName.textContent = `${tel.pivot_name} (${maker} ${model})`.trim();
+    }
+    if (badgeActiveEquip && tel.pivot_name) {
+      badgeActiveEquip.textContent = `${tel.pivot_name} (#${tel.id_equip})`;
+    }
+    if (badgeActiveMaker) {
+      badgeActiveMaker.textContent = `${tel.pivot_maker || "Valmont"} ${tel.pivot_model || ""}`.trim();
+    }
+    if (badgeActiveRadius && tel.pivot_radius) {
+      badgeActiveRadius.textContent = `${tel.pivot_radius.toFixed(0)} m`;
+    }
+    if (badgeActivePressure && tel.nominal_pressure) {
+      badgeActivePressure.textContent = `${tel.nominal_pressure.toFixed(2)} bar`;
+    }
+
     // 1. Update KPI Values
     const angle = tel.current_angle.toFixed(1);
     kpiAngle.textContent = `${angle}°`;
@@ -296,6 +334,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // 2. Update Polar Highcharts
     if (polarChart && polarChart.series && polarChart.series[0]) {
       const armLength = tel.pivot_radius || 380;
+
+      // Dynamically auto-scale radius axis
+      if (polarChart.yAxis && polarChart.yAxis[0]) {
+        const currentMax = polarChart.yAxis[0].max;
+        const targetMax = Math.max(50, Math.ceil((armLength * 1.15) / 25) * 25);
+        if (Math.abs(currentMax - targetMax) > 15) {
+          polarChart.yAxis[0].setExtremes(0, targetMax, false);
+        }
+      }
+
       polarChart.series[0].setData([[0, 0], [tel.current_angle, armLength]], true, false);
 
       // Sector swath representation
@@ -526,7 +574,163 @@ document.addEventListener("DOMContentLoaded", () => {
     mcpLogContainer.scrollTop = mcpLogContainer.scrollHeight;
   }
 
+  // -------------------------------------------------------------------------
+  // 6. Dynamic Asset Catalog & Equipment Switching
+  // -------------------------------------------------------------------------
+
+  let currentSelectedFarmId = 1515; // VB Homestead default
+  let currentActiveEquipId = 14863;  // Haak 1 default
+
+  function debounce(func, wait = 300) {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+  }
+
+  async function fetchFarms(searchQuery = "") {
+    try {
+      const res = await fetch(`/api/catalog/farms?q=${encodeURIComponent(searchQuery)}&limit=100`);
+      if (!res.ok) return;
+      const farms = await res.json();
+
+      if (!selectFarm) return;
+      selectFarm.innerHTML = "";
+      if (farms.length === 0) {
+        selectFarm.innerHTML = '<option value="">Nenhuma fazenda encontrada</option>';
+        return;
+      }
+
+      farms.forEach(f => {
+        const opt = document.createElement("option");
+        opt.value = f.farm_id;
+        const location = f.farm_city ? `${f.farm_city}${f.farm_state ? ", " + f.farm_state : ""}` : "";
+        const locTxt = location ? ` - ${location}` : "";
+        opt.textContent = `${f.farm_name} (${f.total_equips} equips)${locTxt}`;
+        if (f.farm_id === currentSelectedFarmId) {
+          opt.selected = true;
+        }
+        selectFarm.appendChild(opt);
+      });
+
+      if (!selectFarm.value && farms.length > 0) {
+        selectFarm.value = farms[0].farm_id;
+      }
+      currentSelectedFarmId = parseInt(selectFarm.value);
+    } catch (err) {
+      console.error("Erro ao carregar fazendas:", err);
+    }
+  }
+
+  async function fetchEquipment() {
+    try {
+      const farmId = selectFarm ? selectFarm.value : "";
+      const typeCode = selectEquipType ? selectEquipType.value : "all";
+      const q = inputEquipSearch ? inputEquipSearch.value : "";
+
+      let url = "/api/catalog/equipment?limit=100";
+      if (farmId) url += `&farm_id=${farmId}`;
+      if (typeCode && typeCode !== "all") url += `&type_code=${typeCode}`;
+      if (q && q.trim()) url += `&q=${encodeURIComponent(q.trim())}`;
+
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const equips = await res.json();
+
+      if (!selectEquipment) return;
+      selectEquipment.innerHTML = "";
+      if (equips.length === 0) {
+        selectEquipment.innerHTML = '<option value="">Nenhum equipamento encontrado</option>';
+        return;
+      }
+
+      equips.forEach(e => {
+        const opt = document.createElement("option");
+        opt.value = e.equip_id;
+        const radTxt = e.radius ? `${e.radius.toFixed(0)}m` : "-";
+        const pressTxt = e.nominal_pressure ? `${e.nominal_pressure.toFixed(1)}bar` : "-";
+        opt.textContent = `[${e.type_name}] ${e.equip_name} - ${e.maker} ${e.model} (R: ${radTxt}, P: ${pressTxt})`;
+        if (e.equip_id === currentActiveEquipId) {
+          opt.selected = true;
+        }
+        selectEquipment.appendChild(opt);
+      });
+
+      if (!selectEquipment.value && equips.length > 0) {
+        selectEquipment.value = equips[0].equip_id;
+      }
+    } catch (err) {
+      console.error("Erro ao carregar equipamentos:", err);
+    }
+  }
+
+  async function applyEquipmentSwitch(equipId) {
+    if (!equipId) return;
+    const targetId = parseInt(equipId);
+    try {
+      const res = await fetch("/api/control/select-equipment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ equip_id: targetId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        currentActiveEquipId = targetId;
+        addMcpLog(`[SCADA ATIVO ALTERADO] Equipamento #${targetId} selecionado com sucesso.`);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: "select_equipment", equip_id: targetId }));
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao alternar equipamento:", err);
+    }
+  }
+
+  if (inputFarmSearch) {
+    inputFarmSearch.addEventListener("input", debounce(async () => {
+      await fetchFarms(inputFarmSearch.value);
+      await fetchEquipment();
+    }, 250));
+  }
+
+  if (selectFarm) {
+    selectFarm.addEventListener("change", async () => {
+      currentSelectedFarmId = parseInt(selectFarm.value);
+      await fetchEquipment();
+    });
+  }
+
+  if (selectEquipType) {
+    selectEquipType.addEventListener("change", async () => {
+      await fetchEquipment();
+    });
+  }
+
+  if (inputEquipSearch) {
+    inputEquipSearch.addEventListener("input", debounce(async () => {
+      await fetchEquipment();
+    }, 250));
+  }
+
+  if (btnApplyEquipment) {
+    btnApplyEquipment.addEventListener("click", () => {
+      if (selectEquipment && selectEquipment.value) {
+        applyEquipmentSwitch(selectEquipment.value);
+      }
+    });
+  }
+
+  if (selectEquipment) {
+    selectEquipment.addEventListener("change", () => {
+      if (selectEquipment.value) {
+        applyEquipmentSwitch(selectEquipment.value);
+      }
+    });
+  }
+
   // Initial boots
   initHighcharts();
   connectWebSocket();
+  fetchFarms().then(() => fetchEquipment());
 });

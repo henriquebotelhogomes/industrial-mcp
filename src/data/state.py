@@ -8,6 +8,7 @@ import duckdb
 
 from src.config import settings
 from src.core.logging import logger
+from src.data.catalog import asset_catalog
 from src.ml.anomaly_detector import detector
 from src.ml.domain_rules import AnomalyReport, TelemetryEvent
 
@@ -31,6 +32,7 @@ class TelemetryStateManager:
     def load_telemetry_series(self, equip_id: int | None = 14863) -> int:
         """Loads smooth continuous operational telemetry sequence based on real equipment specs."""
         target_id = equip_id or 14863
+        farm_id = 1515
         farm_name = "VB Homestead"
         pivot_name = "Haak 1"
         maker = "Valmont"
@@ -40,32 +42,43 @@ class TelemetryStateManager:
         flow = 185.0
 
         try:
-            con = duckdb.connect(str(settings.duckdb_path), read_only=True)
-            specs = con.execute(f"""
-                SELECT farm_name, pivot_name, pivot_maker, pivot_model, nominal_pressure, pivot_radius, flow_rate
-                FROM v_gold_metrics
-                WHERE id_equip = {target_id}
-                LIMIT 1
-            """).fetchone()
-            con.close()
-            if specs:
-                farm_name = specs[0] or farm_name
-                pivot_name = specs[1] or pivot_name
-                maker = specs[2] or maker
-                model = specs[3] or model
-                nom_pressure = float(specs[4]) if specs[4] else nom_pressure
-                if nom_pressure > 10.0:
-                    nom_pressure = round(nom_pressure / 10.0, 2)
-                radius = float(specs[5]) if specs[5] else radius
-                flow = float(specs[6]) if specs[6] else flow
+            catalog_spec = asset_catalog.get_equipment_by_id(target_id)
+            if catalog_spec:
+                farm_id = catalog_spec.get("farm_id", farm_id)
+                farm_name = catalog_spec.get("farm_name", farm_name)
+                pivot_name = catalog_spec.get("equip_name", pivot_name)
+                maker = catalog_spec.get("maker", maker)
+                model = catalog_spec.get("model", model)
+                nom_pressure = float(catalog_spec.get("nominal_pressure") or nom_pressure)
+                radius = float(catalog_spec.get("radius") or radius)
+                flow = float(catalog_spec.get("flow_rate") or flow)
+            else:
+                con = duckdb.connect(str(settings.duckdb_path), read_only=True)
+                specs = con.execute(f"""
+                    SELECT farm_name, pivot_name, pivot_maker, pivot_model, nominal_pressure, pivot_radius, flow_rate
+                    FROM v_gold_metrics
+                    WHERE id_equip = {target_id}
+                    LIMIT 1
+                """).fetchone()
+                con.close()
+                if specs:
+                    farm_name = specs[0] or farm_name
+                    pivot_name = specs[1] or pivot_name
+                    maker = specs[2] or maker
+                    model = specs[3] or model
+                    nom_pressure = float(specs[4]) if specs[4] else nom_pressure
+                    if nom_pressure > 10.0:
+                        nom_pressure = round(nom_pressure / 10.0, 2)
+                    radius = float(specs[5]) if specs[5] else radius
+                    flow = float(specs[6]) if specs[6] else flow
         except Exception as e:
-            logger.warn("duckdb_query_fallback", error=str(e))
+            logger.warn("catalog_spec_query_fallback", error=str(e))
 
         baseline = []
         angle = 0.0
         for _i in range(360):
             baseline.append({
-                "id_farm": 1515,
+                "id_farm": farm_id,
                 "id_equip": target_id,
                 "farm_name": farm_name,
                 "pivot_name": pivot_name,
@@ -87,7 +100,13 @@ class TelemetryStateManager:
 
         self.telemetry_history = baseline
         self.current_index = 0
-        logger.info("telemetry_series_loaded", equip_id=target_id, pivot_name=pivot_name, total_records=len(baseline))
+        logger.info(
+            "telemetry_series_loaded",
+            equip_id=target_id,
+            pivot_name=pivot_name,
+            farm_name=farm_name,
+            total_records=len(baseline),
+        )
         return len(baseline)
 
     async def advance_tick(self) -> dict[str, Any]:
@@ -222,6 +241,26 @@ class TelemetryStateManager:
                 self.active_anomaly_report.anomaly_types = []
             logger.warn("hitl_action_rejected_by_operator", ticket_id=ticket_id)
             return {"status": "REJECTED", "message": "Intervenção cancelada pelo operador humano."}
+
+    async def switch_equipment(self, equip_id: int) -> dict[str, Any]:
+        """Switches the actively monitored equipment dynamically across the entire fleet."""
+        async with self.lock:
+            self.load_telemetry_series(equip_id=equip_id)
+            self.previous_event = None
+            self.current_event = None
+            self.active_anomaly_report = None
+            self.pending_hitl_ticket = None
+            self.injected_anomaly = None
+
+        # Advance one tick to populate current_event and broadcast to WebSockets
+        payload = await self.advance_tick()
+        logger.info("equipment_switched_successfully", equip_id=equip_id)
+        return {
+            "status": "SUCCESS",
+            "equip_id": equip_id,
+            "telemetry": payload.get("telemetry"),
+            "anomaly": payload.get("anomaly"),
+        }
 
 
 state_manager = TelemetryStateManager()

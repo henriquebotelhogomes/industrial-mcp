@@ -13,12 +13,17 @@ from pydantic import BaseModel, Field
 
 from src.config import settings
 from src.core.logging import logger, setup_logging
+from src.data.catalog import asset_catalog
 from src.data.state import state_manager
 from src.mcp.server import mcp_server
 
 # ---------------------------------------------------------------------------
 # Pydantic Schemas for Request/Response Contracts
 # ---------------------------------------------------------------------------
+
+class SelectEquipmentRequest(BaseModel):
+    equip_id: int = Field(description="Equipment ID to monitor in SCADA")
+
 
 class PlaybackControlRequest(BaseModel):
     is_playing: bool | None = None
@@ -146,6 +151,50 @@ async def scalar_docs() -> HTMLResponse:
 # REST Endpoints
 # ---------------------------------------------------------------------------
 
+@app.get("/api/catalog/farms")
+async def list_farms(q: str = "", limit: int = 50):
+    """Returns farms matching search term with equipment counts."""
+    return asset_catalog.get_farms(search=q, limit=limit)
+
+
+@app.get("/api/catalog/equipment-types")
+async def list_equipment_types():
+    """Returns all supported irrigation equipment categories."""
+    return asset_catalog.get_equipment_types()
+
+
+@app.get("/api/catalog/equipment")
+async def list_equipment(
+    farm_id: int | None = None,
+    type_code: str | None = None,
+    q: str = "",
+    limit: int = 50,
+):
+    """Returns equipment units filtered by farm, type code, or text query."""
+    return asset_catalog.get_equipment(
+        farm_id=farm_id,
+        type_code=type_code,
+        search=q,
+        limit=limit,
+    )
+
+
+@app.get("/api/catalog/equipment/{equip_id}")
+async def get_equipment_detail(equip_id: int):
+    """Returns single equipment unit specifications."""
+    spec = asset_catalog.get_equipment_by_id(equip_id)
+    if not spec:
+        raise HTTPException(status_code=404, detail="Equipamento não encontrado.")
+    return spec
+
+
+@app.post("/api/control/select-equipment")
+async def select_equipment(req: SelectEquipmentRequest):
+    """Switches the active equipment monitored on SCADA and updates telemetry baseline."""
+    res = await state_manager.switch_equipment(req.equip_id)
+    return res
+
+
 @app.get("/api/status")
 async def get_current_status():
     """Returns the latest active pivot telemetry event and anomaly state."""
@@ -251,6 +300,8 @@ async def websocket_telemetry_stream(websocket: WebSocket):
                     await state_manager.approve_hitl_action(msg.get("ticket_id"))
                 elif action == "reject_hitl":
                     await state_manager.reject_hitl_action(msg.get("ticket_id"))
+                elif action == "select_equipment":
+                    await state_manager.switch_equipment(int(msg.get("equip_id")))
         except (WebSocketDisconnect, asyncio.CancelledError):
             pass
 

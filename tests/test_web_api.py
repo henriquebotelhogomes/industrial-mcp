@@ -45,3 +45,37 @@ async def test_anomaly_injection_endpoint():
         res = await client.post("/api/control/inject-anomaly", json={"anomaly_type": "angle_jump"})
         assert res.status_code == 200
         assert res.json()["injected_anomaly"] == "angle_jump"
+
+
+@pytest.mark.asyncio
+async def test_catalog_endpoints():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Farms
+        res_farms = await client.get("/api/catalog/farms?limit=10")
+        assert res_farms.status_code == 200
+        farms = res_farms.json()
+        assert len(farms) > 0
+        assert "farm_name" in farms[0]
+        assert "farm_id" in farms[0]
+
+        # Types
+        res_types = await client.get("/api/catalog/equipment-types")
+        assert res_types.status_code == 200
+        types = res_types.json()
+        assert len(types) >= 6
+
+        # Equipment
+        res_equips = await client.get("/api/catalog/equipment?limit=10")
+        assert res_equips.status_code == 200
+        equips = res_equips.json()
+        assert len(equips) > 0
+        assert "equip_name" in equips[0]
+        target_equip = equips[0]["equip_id"]
+
+        # Select equipment
+        res_select = await client.post("/api/control/select-equipment", json={"equip_id": target_equip})
+        assert res_select.status_code == 200
+        data = res_select.json()
+        assert data["status"] == "SUCCESS"
+        assert data["equip_id"] == target_equip
+        assert data["telemetry"]["id_equip"] == target_equip

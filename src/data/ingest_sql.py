@@ -125,6 +125,170 @@ PIVOCENTRAL_COLS = [
     "Log_Delete_Date",
 ]
 
+ASPERSOR_COLS = [
+    "ID",
+    "ID_Fazenda",
+    "ID_Conta",
+    "ID_Conta_Agua",
+    "ID_Local",
+    "Nome",
+    "Modelo",
+    "Fabrica",
+    "DiametroBocalX",
+    "DiametroBocalY",
+    "PressaoServico",
+    "Vazao",
+    "CxUnifChristiansen",
+    "PerdaConducao",
+    "Decisao",
+    "ResCompleto",
+    "PotenciaAbsolutaRede",
+    "Potencia_Instalada",
+    "Indice_Carregamento",
+    "Fonte_Energia",
+    "KW_M3",
+    "L_H",
+    "ComSenha",
+    "Senha",
+    "Simulacao",
+    "Sincronizar",
+    "Selected",
+    "Deleted",
+    "Log_Delete_Date",
+]
+
+AUTOPROPELIDO_COLS = [
+    "ID",
+    "ID_Fazenda",
+    "ID_Conta",
+    "ID_Conta_Agua",
+    "ID_Local",
+    "Nome",
+    "Modelo",
+    "Fabrica",
+    "FormaTracao",
+    "VelDeslocamento",
+    "AlcanceCanhao",
+    "LarguraFaixaIrrig",
+    "ComprimentoFaixaIrrig",
+    "EspacamentoHidrantes",
+    "CxUnifChristiansen",
+    "NumeroBocais",
+    "DiametroMenorBocal",
+    "DiametroMaiorBocal",
+    "Vazao",
+    "PressaoServico",
+    "AnguloGiro",
+    "PerdaConducao",
+    "PotenciaAbsolutaRede",
+    "Potencia_Instalada",
+    "Indice_Carregamento",
+    "Fonte_Energia",
+    "KW_M3",
+    "L_H",
+    "Selected",
+    "Sincronizar",
+    "Simulacao",
+    "Deleted",
+    "Log_Delete_Date",
+]
+
+EQUIPAMENTO_LINEAR_COLS = [
+    "ID",
+    "ID_Fazenda",
+    "ID_Conta",
+    "ID_Conta_Agua",
+    "ID_Local",
+    "Nome",
+    "Modelo",
+    "Fabrica",
+    "TipoLinear",
+    "Composicao",
+    "Altura",
+    "LarguraFaixaIrrig",
+    "ComprimentoFaixaIrrig",
+    "TempoPivotamento",
+    "PeriodoRele100",
+    "VazaoTotal",
+    "PressaoServico",
+    "ComprimentoUltTorre",
+    "ComprimentoTubulacao",
+    "FormaMolhamento",
+    "DiametroMenorBocal",
+    "DiametroMaiorBocal",
+    "PerdaConducao",
+    "CxUnifChristiansen",
+    "PotenciaAbsolutaRede",
+    "Potencia_Instalada",
+    "Indice_Carregamento",
+    "Fonte_Energia",
+    "KW_M3",
+    "L_H",
+    "Simulacao",
+    "Sincronizar",
+    "Selected",
+    "Deleted",
+    "Log_Delete_Date",
+]
+
+GOTEJADOR_COLS = [
+    "ID",
+    "ID_Fazenda",
+    "ID_Conta",
+    "ID_Conta_Agua",
+    "ID_Local",
+    "Nome",
+    "Fabrica",
+    "Tipo",
+    "Caracterizacao",
+    "PressaoServico",
+    "Vazao",
+    "Vazao_Bomba",
+    "DiametroBocal",
+    "CxUnifChristiansen",
+    "PerdaConducao",
+    "PotenciaAbsolutaRede",
+    "Potencia_Instalada",
+    "Indice_Carregamento",
+    "Fonte_Energia",
+    "KW_M3",
+    "L_H",
+    "Simulacao",
+    "Selected",
+    "Sincronizar",
+    "Deleted",
+    "Log_Delete_Date",
+]
+
+MICROASPERSOR_COLS = [
+    "ID",
+    "ID_Fazenda",
+    "ID_Conta",
+    "ID_Conta_Agua",
+    "ID_Local",
+    "Nome",
+    "Fabrica",
+    "Tipo",
+    "Caracterizacao",
+    "PressaoServico",
+    "Vazao",
+    "DiametroBocal",
+    "DiametroMolhado",
+    "CxUnifChristiansen",
+    "PerdaConducao",
+    "PotenciaAbsolutaRede",
+    "Potencia_Instalada",
+    "Indice_Carregamento",
+    "Fonte_Energia",
+    "KW_M3",
+    "L_H",
+    "Simulacao",
+    "Selected",
+    "Sincronizar",
+    "Deleted",
+    "Log_Delete_Date",
+]
+
 
 def parse_sql_inserts(filepath: Path, expected_cols: list[str]) -> pl.DataFrame:
     """Parses MySQL dump INSERT statements with robust escaping support."""
@@ -248,6 +412,51 @@ def run_bronze_ingestion() -> None:
         out_pivocentral = bronze_dir / "pivocentral.parquet"
         df_pivocentral.write_parquet(out_pivocentral)
         logger.info("ingested_bronze_table", table="pivocentral", rows=len(df_pivocentral), path=str(out_pivocentral))
+
+    # 4. Ingest gotejador.sql
+    gotejador_sql = settings.old_db_dir / "gotejador.sql"
+    if gotejador_sql.exists():
+        logger.info("ingesting_gotejador", path=str(gotejador_sql))
+        df_gotejador = parse_sql_inserts(gotejador_sql, GOTEJADOR_COLS)
+        out_gotejador = bronze_dir / "gotejador.parquet"
+        df_gotejador.write_parquet(out_gotejador)
+        logger.info("ingested_bronze_table", table="gotejador", rows=len(df_gotejador), path=str(out_gotejador))
+
+    # 5. Ingest microaspersor.sql
+    micro_sql = settings.old_db_dir / "microaspersor.sql"
+    if micro_sql.exists():
+        logger.info("ingesting_microaspersor", path=str(micro_sql))
+        df_micro = parse_sql_inserts(micro_sql, MICROASPERSOR_COLS)
+        out_micro = bronze_dir / "microaspersor.parquet"
+        df_micro.write_parquet(out_micro)
+        logger.info("ingested_bronze_table", table="microaspersor", rows=len(df_micro), path=str(out_micro))
+
+    # 6. Ingest aspersor.sql
+    aspersor_sql = settings.old_db_dir / "aspersor.sql"
+    if aspersor_sql.exists():
+        logger.info("ingesting_aspersor", path=str(aspersor_sql))
+        df_aspersor = parse_sql_inserts(aspersor_sql, ASPERSOR_COLS)
+        out_aspersor = bronze_dir / "aspersor.parquet"
+        df_aspersor.write_parquet(out_aspersor)
+        logger.info("ingested_bronze_table", table="aspersor", rows=len(df_aspersor), path=str(out_aspersor))
+
+    # 7. Ingest equipamento_linear.sql
+    linear_sql = settings.old_db_dir / "equipamento_linear.sql"
+    if linear_sql.exists():
+        logger.info("ingesting_equipamento_linear", path=str(linear_sql))
+        df_linear = parse_sql_inserts(linear_sql, EQUIPAMENTO_LINEAR_COLS)
+        out_linear = bronze_dir / "equipamento_linear.parquet"
+        df_linear.write_parquet(out_linear)
+        logger.info("ingested_bronze_table", table="equipamento_linear", rows=len(df_linear), path=str(out_linear))
+
+    # 8. Ingest autopropelido.sql
+    auto_sql = settings.old_db_dir / "autopropelido.sql"
+    if auto_sql.exists():
+        logger.info("ingesting_autopropelido", path=str(auto_sql))
+        df_auto = parse_sql_inserts(auto_sql, AUTOPROPELIDO_COLS)
+        out_auto = bronze_dir / "autopropelido.parquet"
+        df_auto.write_parquet(out_auto)
+        logger.info("ingested_bronze_table", table="autopropelido", rows=len(df_auto), path=str(out_auto))
 
 
 if __name__ == "__main__":
