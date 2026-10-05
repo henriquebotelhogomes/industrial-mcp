@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Industrial-MCP // Supervisório SCADA 4.0 & AI Watchdog</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Highcharts Core & Polar Extension -->
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/highcharts-more.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .scada-glow {
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.15);
+    }
+    .scada-alert-glow {
+      box-shadow: 0 0 35px rgba(239, 68, 68, 0.35);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- TOP HEADER -->
+  <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 px-6 py-3.5 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <i data-lucide="gauge" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">Industrial-MCP</h1>
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">SCADA 4.0 + FastMCP</span>
+            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">Valmont Real Data</span>
+          </div>
+          <p class="text-xs text-slate-400">Supervisório de Telemetria de Pivôs, Detecção de Anomalias (Isolation Forest) e Governança HITL</p>
+        </div>
+      </div>
+
+      <!-- Live Connection & Context Badge -->
+      <div class="flex items-center space-x-4">
+        <div class="hidden sm:flex items-center space-x-2 bg-slate-800/60 border border-slate-700/60 px-3 py-1.5 rounded-lg text-xs">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span class="text-slate-300 font-medium" id="header-farm-name">Fazenda VB Homestead</span>
+          <span class="text-slate-500">|</span>
+          <span class="text-emerald-400 font-medium" id="header-pivot-name">Pivô Haak 1 (Valmont 8000C)</span>
+        </div>
+
+        <div id="ws-status-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="ws-status-text">Ao Vivo (WebSocket)</span>
+        </div>
+
+        <a href="/docs" target="_blank" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition">
+          <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+          <span>Scalar Docs</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- DEMONSTRATION CONTROL BAR -->
+  <section class="bg-slate-900 border-b border-slate-800 px-6 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4 text-xs">
+      
+      <!-- Replay Controls -->
+      <div class="flex items-center space-x-3">
+        <span class="text-slate-400 uppercase tracking-wider font-semibold text-[11px]">Replay de Telemetria:</span>
+        <button id="btn-toggle-play" class="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-md transition shadow-sm">
+          <i data-lucide="pause" class="w-3.5 h-3.5" id="icon-play-state"></i>
+          <span id="label-play-state">Pausar</span>
+        </button>
+
+        <div class="flex items-center bg-slate-800 border border-slate-700 rounded-md overflow-hidden p-0.5">
+          <span class="px-2 text-slate-400">Velocidade:</span>
+          <button class="btn-speed px-2.5 py-1 rounded text-slate-300 hover:bg-slate-700 transition" data-speed="1.0">1x</button>
+          <button class="btn-speed px-2.5 py-1 rounded text-slate-300 hover:bg-slate-700 transition" data-speed="2.0">2x</button>
+          <button class="btn-speed px-2.5 py-1 rounded bg-slate-700 text-white font-bold transition" data-speed="5.0">5x</button>
+          <button class="btn-speed px-2.5 py-1 rounded text-slate-300 hover:bg-slate-700 transition" data-speed="10.0">10x</button>
+        </div>
+      </div>
+
+      <!-- Live Demo Anomaly Injections -->
+      <div class="flex items-center space-x-2">
+        <span class="text-amber-400 font-semibold uppercase tracking-wider text-[11px] flex items-center gap-1">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
+          Injetar Anomalia p/ Demo:
+        </span>
+        <button id="btn-inject-angle" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-md font-medium transition flex items-center space-x-1">
+          <i data-lucide="compass" class="w-3.5 h-3.5"></i>
+          <span>Salto Angular (+45°)</span>
+        </button>
+        <button id="btn-inject-pressure" class="bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 px-3 py-1.5 rounded-md font-medium transition flex items-center space-x-1">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+          <span>Queda de Pressão (0.35 bar)</span>
+        </button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- MAIN SCADA DASHBOARD CONTENT -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+
+    <!-- KPI SUMMARY CARDS -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      
+      <!-- Posição Angular -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+        <span class="text-xs text-slate-400 font-medium">Posição Angular</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-bold font-mono text-white" id="kpi-angle">0.0°</span>
+          <span class="text-xs px-2 py-0.5 rounded font-mono bg-slate-800 text-slate-300" id="kpi-direction">Forward</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-500">Encoder do Pivô</div>
+      </div>
+
+      <!-- Pressão de Base -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between" id="card-pressure">
+        <span class="text-xs text-slate-400 font-medium">Pressão de Base</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-bold font-mono text-emerald-400" id="kpi-pressure">3.4 bar</span>
+          <span class="text-xs text-slate-400 font-mono">nom 3.4</span>
+        </div>
+        <div class="mt-2 w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+          <div id="bar-pressure" class="bg-emerald-500 h-full rounded-full transition-all duration-300" style="width: 100%;"></div>
+        </div>
+      </div>
+
+      <!-- Estado do Motor -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+        <span class="text-xs text-slate-400 font-medium">Estado do Motor</span>
+        <div class="mt-2 flex items-center space-x-2">
+          <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" id="dot-status"></span>
+          <span class="text-xl font-bold font-mono text-white" id="kpi-running-status">RUNNING</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-500">Relé Principal CLP</div>
+      </div>
+
+      <!-- Modo de Água -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+        <span class="text-xs text-slate-400 font-medium">Modo Irrigação</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-bold font-mono text-blue-400" id="kpi-water-mode">WET</span>
+          <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">Bomba ON</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-500">Comando Hidráulico</div>
+      </div>
+
+      <!-- Percentímetro -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+        <span class="text-xs text-slate-400 font-medium">Percentímetro CLP</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-bold font-mono text-amber-400" id="kpi-percent-timer">65.0%</span>
+          <span class="text-xs text-slate-400 font-mono">Duty cycle</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-500">Avanço Última Torre</div>
+      </div>
+
+      <!-- Vazão Hidrométrica -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+        <span class="text-xs text-slate-400 font-medium">Vazão Instantânea</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-2xl font-bold font-mono text-cyan-400" id="kpi-flow-rate">185 m³/h</span>
+          <span class="text-xs text-slate-400 font-mono">s = 88%</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-500">Hidrômetro Telemétrico</div>
+      </div>
+
+    </div>
+
+    <!-- MAIN VISUALIZATION SECTION: POLAR 360° + TIME SERIES SPLINE -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Polar 360° Chart (Pivô Físico) -->
+      <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between shadow-xl">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-2">
+          <div>
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="disc" class="w-4 h-4 text-emerald-400"></i>
+              Geometria Polar do Pivô Central (360°)
+            </h2>
+            <p class="text-xs text-slate-400">Visualização angular do lance de torres e setor em tempo real</p>
+          </div>
+          <span class="px-2 py-1 bg-slate-800 rounded font-mono text-xs text-emerald-400" id="polar-angle-indicator">0.0°</span>
+        </div>
+        
+        <div id="container-polar" class="w-full h-80"></div>
+
+        <div class="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+          <span>Raio Total: <strong class="text-slate-200">380m</strong></span>
+          <span>Área Irrigada: <strong class="text-slate-200">45.3 ha</strong></span>
+          <span>Tempo de Volta: <strong class="text-slate-200">18.5h</strong></span>
+        </div>
+      </div>
+
+      <!-- Real-time Spline Time-Series -->
+      <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between shadow-xl">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-2">
+          <div>
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
+              Série Temporal Contínua de Telemetria
+            </h2>
+            <p class="text-xs text-slate-400">Pressão de serviço (bar), Percentímetro (%) e Velocidade angular</p>
+          </div>
+          <div class="flex items-center space-x-2 text-xs">
+            <span class="inline-flex items-center gap-1 text-emerald-400"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Pressão</span>
+            <span class="inline-flex items-center gap-1 text-amber-400"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Percentímetro</span>
+          </div>
+        </div>
+
+        <div id="container-timeseries" class="w-full h-80"></div>
+
+        <div class="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+          <span>Amostragem: <strong class="text-slate-200">1 Hz (Streaming)</strong></span>
+          <span>Engine Analítica: <strong class="text-slate-200">DuckDB OLAP</strong></span>
+          <span>Latência de Inferência: <strong class="text-emerald-400 font-mono">&lt; 3.8 ms</strong></span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- AI WATCHDOG & MCP PROTOCOL AUDIT PANEL -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- AI Watchdog & Diagnostic Card -->
+      <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl" id="panel-watchdog">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <i data-lucide="brain" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-white">AI Watchdog & MLOps Engine</h3>
+              <p class="text-xs text-slate-400">Isolation Forest + Valmont Physical Domain Guardrails</p>
+            </div>
+          </div>
+          <span id="badge-watchdog-status" class="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+            <span>Nominal</span>
+          </span>
+        </div>
+
+        <!-- Diagnostic Feed -->
+        <div id="watchdog-diagnostic-content" class="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Score de Decisão Isolation Forest:</span>
+            <span class="font-mono font-bold text-emerald-400" id="watchdog-score">+0.284 (Normal)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Validação Cruzada Bomba vs Pressão:</span>
+            <span class="font-semibold text-emerald-400" id="watchdog-pump-check">Aprovado (P &gt; 1.2 bar)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Continuidade Angular (Encoder):</span>
+            <span class="font-semibold text-emerald-400" id="watchdog-encoder-check">Aprovado (&lt; 6.0°/min)</span>
+          </div>
+        </div>
+
+        <!-- Active Alerts / Warnings Container -->
+        <div id="watchdog-alert-box" class="hidden p-3.5 rounded-xl border bg-red-950/40 border-red-500/40 text-red-200 text-xs space-y-1">
+          <div class="flex items-center font-bold text-red-400 gap-1.5">
+            <i data-lucide="alert-octagon" class="w-4 h-4 text-red-400"></i>
+            <span>VIOLAÇÃO CRÍTICA DETECTADA PELO WATCHDOG</span>
+          </div>
+          <p id="watchdog-alert-text" class="text-red-300">Nenhuma anomalia ativa.</p>
+        </div>
+      </div>
+
+      <!-- Model Context Protocol (FastMCP) Audit Console -->
+      <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <i data-lucide="cpu" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-white">Console do Protocolo FastMCP</h3>
+              <p class="text-xs text-slate-400">Resources, Tools e Guardrails HITL expostos para modelos de IA</p>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-300">mcp-server-v2</span>
+        </div>
+
+        <!-- MCP Log Stream -->
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 h-36 overflow-y-auto font-mono text-[11px] space-y-1.5" id="mcp-log-container">
+          <div class="text-slate-500">[MCP INIT] Servidor inicializado: Industrial-Telemetry-MCP</div>
+          <div class="text-slate-400">[RESOURCE] telemetry://pivot/14863/live exposto (Read-only)</div>
+          <div class="text-slate-400">[TOOL] diagnose_equipment registrado (@mcp.tool)</div>
+          <div class="text-slate-400">[TOOL] request_emergency_stop registrado (Guarded by HITL)</div>
+        </div>
+
+        <div class="flex items-center justify-between text-xs text-slate-400 pt-1">
+          <span>Status do Gateway: <strong class="text-emerald-400">Ativo</strong></span>
+          <span>Transporte: <strong class="text-slate-200">SSE / Streamable HTTP</strong></span>
+          <span>Zero PII: <strong class="text-emerald-400">Anonimizado</strong></span>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- HUMAN-IN-THE-LOOP (HITL) SAFETY MODAL -->
+  <div id="modal-hitl" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl scada-alert-glow animate-bounce-short">
+      
+      <div class="flex items-start space-x-3.5">
+        <div class="w-12 h-12 rounded-xl bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-400 flex-shrink-0">
+          <i data-lucide="shield-alert" class="w-7 h-7"></i>
+        </div>
+        <div>
+          <span class="px-2 py-0.5 rounded text-[11px] font-bold tracking-wider uppercase bg-red-500/20 text-red-300 border border-red-500/30">
+            Ação com Efeito Colateral Físico (HITL)
+          </span>
+          <h3 class="text-lg font-bold text-white mt-1">Autorização de Intervenção SCADA / CLP</h3>
+          <p class="text-xs text-slate-400">O agente de IA identificou risco operacional e solicita intervenção.</p>
+        </div>
+      </div>
+
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2 text-xs">
+        <div class="flex justify-between">
+          <span class="text-slate-400">Ticket ID:</span>
+          <span class="font-mono text-slate-200" id="hitl-ticket-id">HITL-STOP-14863</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Equipamento Alvo:</span>
+          <span class="font-semibold text-white" id="hitl-pivot-target">Pivô Haak 1 (Fazenda VB Homestead)</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Comando Solicitado:</span>
+          <span class="font-bold text-red-400" id="hitl-command-name">PARADA DE EMERGÊNCIA DA BOMBA</span>
+        </div>
+        <div class="mt-2 pt-2 border-t border-slate-800">
+          <span class="text-slate-400 block mb-1">Diagnóstico da IA / Causa-Raiz:</span>
+          <p class="text-red-300 italic" id="hitl-reason-text">Queda severa de pressão detectada com bomba em regime WET (Risco de cavitação ou vazamento).</p>
+        </div>
+      </div>
+
+      <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300">
+        <p class="flex items-center gap-1.5 font-semibold">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+          Guardrail Inviolável de Governança
+        </p>
+        <p class="mt-0.5 text-amber-200/80">O protocolo MCP impede que o modelo execute este comando de forma autônoma. Apenas a aprovação explícita do operador humano desarmará o relé do CLP.</p>
+      </div>
+
+      <div class="flex items-center justify-end space-x-3 pt-2">
+        <button id="btn-hitl-reject" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition">
+          Rejeitar Intervenção (Sobrescrever IA)
+        </button>
+        <button id="btn-hitl-approve" class="px-5 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center space-x-1.5 shadow-lg shadow-red-600/30">
+          <i data-lucide="power" class="w-4 h-4"></i>
+          <span>Aprovar Desarme no CLP</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="bg-slate-900 border-t border-slate-800 px-6 py-4 mt-auto text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <span>Industrial-MCP Architecture v1.0.0</span> &bull; 
+        <span>Desenvolvido para Demonstração Técnica (Especialista II Automação & IA)</span>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span>FastAPI + WebSockets</span>
+        <span>Highcharts Polar</span>
+        <span>Isolation Forest MLOps</span>
+        <span>DuckDB In-Memory OLAP</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- App Script -->
+  <script src="/static/app.js"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>
