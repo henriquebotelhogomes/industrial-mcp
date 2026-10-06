@@ -133,3 +133,20 @@ async def test_cross_tab_equipment_synchronization():
         assert chat_data["catalog_spec"]["maker"] == "AsBrasil"
         assert chat_data["catalog_spec"]["model"] == "Valmatic"
         assert "Perdizes" in chat_data["catalog_spec"]["farm_name"]
+
+
+@pytest.mark.asyncio
+async def test_farm_selection_equipment_isolation():
+    """Verifies that selecting equipment scoped to a farm never pollutes with equipment from another farm."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Farm 822 (Igarashi) requested with include_equip_id=14863 (which belongs to Farm 1515 VB Homestead)
+        res = await client.get("/api/catalog/equipment?farm_id=822&include_equip_id=14863&limit=10")
+        assert res.status_code == 200
+        equips = res.json()
+        assert len(equips) > 0
+        # ALL returned equipment must belong strictly to farm 822
+        for eq in equips:
+            assert eq["farm_id"] == 822
+        # Equip 14863 from farm 1515 must NOT be in the results
+        assert not any(eq["equip_id"] == 14863 for eq in equips)
+

@@ -349,15 +349,17 @@ class AssetCatalogService:
                 for r in rows
             ]
 
-            # Guarantee that include_equip_id is included even if filtered or capped
+            # Guarantee that include_equip_id is included even if filtered or capped (strictly scoped to farm_id when specified)
             if include_equip_id is not None and not any(e["equip_id"] == include_equip_id for e in equips):
+                farm_clause = f"AND farm_id = {farm_id}" if farm_id is not None else ""
+                type_clause = f"AND type_code = '{type_code}'" if type_code and type_code != "all" else ""
                 specific_row = con.execute(f"""
                     SELECT
                         equip_id, farm_id, farm_name, farm_city, farm_state,
                         equip_name, type_code, type_name, maker, model,
                         nominal_pressure, radius, flow_rate, area
                     FROM v_equipment_catalog
-                    WHERE equip_id = {include_equip_id}
+                    WHERE equip_id = {include_equip_id} {farm_clause} {type_clause}
                     LIMIT 1
                 """).fetchone()
                 if specific_row:

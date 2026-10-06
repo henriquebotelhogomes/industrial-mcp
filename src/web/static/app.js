@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let activeHitlTicket = null;
   let isPlaying = true;
   let currentSpeed = 1.0;
+  let isSwitchingAsset = false;
 
   // DOM Elements
   const wsBadge = document.getElementById("ws-status-badge");
@@ -277,11 +278,12 @@ document.addEventListener("DOMContentLoaded", () => {
     currentSpeed = data.speed;
     updatePlaybackControls();
 
-    // 0. Update Header & Active Asset Badges
-    if ((!currentActiveSpec && tel.id_equip) || (currentActiveSpec && currentActiveSpec.equip_id !== tel.id_equip)) {
+    // 0. Update Header & Active Asset Badges (only if not currently switching assets)
+    if (!isSwitchingAsset && ((!currentActiveSpec && tel.id_equip) || (currentActiveSpec && currentActiveSpec.equip_id !== tel.id_equip))) {
       fetch(`/api/catalog/equipment/${tel.id_equip}`)
         .then(r => r.json())
         .then(sp => {
+          if (isSwitchingAsset) return;
           currentActiveSpec = sp;
           if (sp.farm_id) currentSelectedFarmId = sp.farm_id;
           syncActiveAssetUI(currentActiveSpec, tel);
@@ -289,28 +291,30 @@ document.addEventListener("DOMContentLoaded", () => {
         .catch(() => {});
     }
 
-    if (headerFarmName && tel.farm_name) {
-      const loc = tel.farm_city ? ` - ${tel.farm_city}${tel.farm_state ? ', ' + tel.farm_state : ''}` : '';
-      headerFarmName.textContent = `Fazenda ${tel.farm_name}${loc}`;
-    }
-    if (headerPivotName && tel.pivot_name) {
-      const maker = tel.pivot_maker || (currentActiveSpec ? currentActiveSpec.maker : "Valmont");
-      const model = tel.pivot_model || (currentActiveSpec ? currentActiveSpec.model : "");
-      headerPivotName.textContent = `${tel.pivot_name} (${maker} ${model})`.trim();
-    }
-    if (badgeActiveEquip && tel.pivot_name) {
-      badgeActiveEquip.textContent = `${tel.pivot_name} (#${tel.id_equip})`;
-    }
-    if (badgeActiveMaker) {
-      const maker = tel.pivot_maker || (currentActiveSpec ? currentActiveSpec.maker : "Valmont");
-      const model = tel.pivot_model || (currentActiveSpec ? currentActiveSpec.model : "");
-      badgeActiveMaker.textContent = `${maker} ${model}`.trim();
-    }
-    if (badgeActiveRadius && tel.pivot_radius) {
-      badgeActiveRadius.textContent = `${tel.pivot_radius.toFixed(0)} m`;
-    }
-    if (badgeActivePressure && tel.nominal_pressure) {
-      badgeActivePressure.textContent = `${tel.nominal_pressure.toFixed(2)} bar`;
+    if (!isSwitchingAsset) {
+      if (headerFarmName && tel.farm_name) {
+        const loc = tel.farm_city ? ` - ${tel.farm_city}${tel.farm_state ? ', ' + tel.farm_state : ''}` : '';
+        headerFarmName.textContent = `Fazenda ${tel.farm_name}${loc}`;
+      }
+      if (headerPivotName && tel.pivot_name) {
+        const maker = tel.pivot_maker || (currentActiveSpec ? currentActiveSpec.maker : "Valmont");
+        const model = tel.pivot_model || (currentActiveSpec ? currentActiveSpec.model : "");
+        headerPivotName.textContent = `${tel.pivot_name} (${maker} ${model})`.trim();
+      }
+      if (badgeActiveEquip && tel.pivot_name) {
+        badgeActiveEquip.textContent = `${tel.pivot_name} (#${tel.id_equip})`;
+      }
+      if (badgeActiveMaker) {
+        const maker = tel.pivot_maker || (currentActiveSpec ? currentActiveSpec.maker : "Valmont");
+        const model = tel.pivot_model || (currentActiveSpec ? currentActiveSpec.model : "");
+        badgeActiveMaker.textContent = `${maker} ${model}`.trim();
+      }
+      if (badgeActiveRadius && tel.pivot_radius) {
+        badgeActiveRadius.textContent = `${tel.pivot_radius.toFixed(0)} m`;
+      }
+      if (badgeActivePressure && tel.nominal_pressure) {
+        badgeActivePressure.textContent = `${tel.nominal_pressure.toFixed(2)} bar`;
+      }
     }
 
     if (copilotSpecLiveP && tel.pressure_begin !== undefined) {
@@ -755,12 +759,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function fetchEquipment(ensureEquipId = null) {
+  async function fetchEquipment(ensureEquipId = null, farmChanged = false) {
     try {
       const farmId = selectFarm ? selectFarm.value : (currentSelectedFarmId || "");
       const typeCode = selectEquipType ? selectEquipType.value : "all";
       const q = inputEquipSearch ? inputEquipSearch.value : "";
-      const targetEquipId = ensureEquipId || currentActiveEquipId;
+
+      // If the user changed the farm, do NOT carry over targetEquipId from another farm!
+      let targetEquipId = ensureEquipId;
+      if (!farmChanged && !targetEquipId) {
+        if (currentActiveSpec && String(currentActiveSpec.farm_id) === String(farmId)) {
+          targetEquipId = currentActiveEquipId;
+        }
+      }
 
       let url = "/api/catalog/equipment?limit=200";
       if (farmId) url += `&farm_id=${farmId}`;
@@ -770,7 +781,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const res = await fetch(url);
       if (!res.ok) return;
-      const equips = await res.json();
+      let equips = await res.json();
+
+      // If no equipment found for this specific type on the selected farm, fallback to "all"
+      if (equips.length === 0 && typeCode !== "all") {
+        if (selectEquipType) selectEquipType.value = "all";
+        let fallbackUrl = "/api/catalog/equipment?limit=200";
+        if (farmId) fallbackUrl += `&farm_id=${farmId}`;
+        if (q && q.trim()) fallbackUrl += `&q=${encodeURIComponent(q.trim())}`;
+        if (targetEquipId) fallbackUrl += `&include_equip_id=${targetEquipId}`;
+        const fallbackRes = await fetch(fallbackUrl);
+        if (fallbackRes.ok) {
+          equips = await fallbackRes.json();
+        }
+      }
 
       if (!selectEquipment) return;
       selectEquipment.innerHTML = "";
@@ -779,8 +803,14 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // If targetEquipId is not in equips, but currentActiveSpec matches, prepend it
-      if (targetEquipId && !equips.some(e => e.equip_id === targetEquipId) && currentActiveSpec && currentActiveSpec.equip_id === targetEquipId) {
+      // If targetEquipId is not in equips, but currentActiveSpec matches AND belongs to this farm, prepend it
+      if (
+        targetEquipId &&
+        !equips.some(e => e.equip_id === targetEquipId) &&
+        currentActiveSpec &&
+        currentActiveSpec.equip_id === targetEquipId &&
+        String(currentActiveSpec.farm_id) === String(farmId)
+      ) {
         equips.unshift(currentActiveSpec);
       }
 
@@ -790,7 +820,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const radTxt = e.radius ? `${e.radius.toFixed(0)}m` : "-";
         const pressTxt = e.nominal_pressure ? `${e.nominal_pressure.toFixed(1)}bar` : "-";
         opt.textContent = `[${e.type_name || 'Pivô'}] ${e.equip_name} - ${e.maker || ''} ${e.model || ''} (R: ${radTxt}, P: ${pressTxt})`.trim();
-        if (e.equip_id === targetEquipId) {
+        if (targetEquipId && e.equip_id === targetEquipId) {
           opt.selected = true;
         }
         selectEquipment.appendChild(opt);
@@ -798,8 +828,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (targetEquipId && equips.some(e => e.equip_id === targetEquipId)) {
         selectEquipment.value = String(targetEquipId);
-      } else if (!selectEquipment.value && equips.length > 0) {
-        selectEquipment.value = equips[0].equip_id;
+      } else if (equips.length > 0) {
+        selectEquipment.value = String(equips[0].equip_id);
       }
     } catch (err) {
       console.error("Erro ao carregar equipamentos:", err);
@@ -809,6 +839,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function applyEquipmentSwitch(equipId) {
     if (!equipId) return;
     const targetId = parseInt(equipId);
+    isSwitchingAsset = true;
     try {
       const res = await fetch("/api/control/select-equipment", {
         method: "POST",
@@ -835,6 +866,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (err) {
       console.error("Erro ao alternar equipamento:", err);
+    } finally {
+      setTimeout(() => {
+        isSwitchingAsset = false;
+      }, 400);
     }
   }
 
@@ -847,11 +882,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (selectFarm) {
     selectFarm.addEventListener("change", async () => {
-      currentSelectedFarmId = parseInt(selectFarm.value);
-      // When farm changes, fetch equipment of that farm and automatically activate the first equipment
-      await fetchEquipment();
-      if (selectEquipment && selectEquipment.value) {
-        await applyEquipmentSwitch(selectEquipment.value);
+      const newFarmId = parseInt(selectFarm.value);
+      if (!newFarmId) return;
+      currentSelectedFarmId = newFarmId;
+      isSwitchingAsset = true;
+
+      // Lock selectors temporarily to prevent race conditions during asset transition
+      selectFarm.disabled = true;
+      if (selectEquipment) selectEquipment.disabled = true;
+
+      try {
+        // 1. Fetch equipment belonging to this new farm without carrying over old equip ID
+        await fetchEquipment(null, true);
+
+        // 2. Automatically activate the first equipment of this newly selected farm
+        if (selectEquipment && selectEquipment.value) {
+          await applyEquipmentSwitch(selectEquipment.value);
+        }
+      } catch (err) {
+        console.error("Erro ao alternar fazenda:", err);
+      } finally {
+        selectFarm.disabled = false;
+        if (selectEquipment) selectEquipment.disabled = false;
       }
     });
   }
