@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     semantic_cache_similarity_threshold: float = 0.88
     max_daily_token_budget: int = 100000
 
+    # MLOps & Experiment Tracking (MLflow / DagsHub)
+    mlflow_tracking_uri: str | None = None
+    mlflow_experiment_name: str = "industrial-telemetry-isolation-forest"
+    dagshub_repo_owner: str | None = None
+    dagshub_repo_name: str | None = None
+    dagshub_token: str | None = None
+
     @property
     def bronze_parquet_dir(self) -> Path:
         return self.parquet_dir / "bronze"

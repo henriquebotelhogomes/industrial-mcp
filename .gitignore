@@ -36,6 +36,9 @@ htmlcov/
 *.duckdb.wal
 data/parquet/
 *.log
+mlruns/
+*.db
+data/mlflow.db
 
 # Large Raw Dumps (local storage)
 apis_raw_data.sql
