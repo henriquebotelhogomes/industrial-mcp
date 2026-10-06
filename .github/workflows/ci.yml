@@ -103,16 +103,12 @@ jobs:
 
       - name: Ensure Artifact Registry Repository Exists
         run: |
-          if ! gcloud artifacts repositories describe industrial-repo --location=us-central1 --project=${{ secrets.GCP_PROJECT_ID }} >/dev/null 2>&1; then
-            echo "Repository not found. Creating industrial-repo in us-central1..."
-            gcloud artifacts repositories create industrial-repo \
-              --repository-format=docker \
-              --location=us-central1 \
-              --description="Docker repository for Industrial-MCP" \
-              --project=${{ secrets.GCP_PROJECT_ID }}
-          else
-            echo "Repository industrial-repo already exists."
-          fi
+          gcloud artifacts repositories create industrial-repo \
+            --repository-format=docker \
+            --location=us-central1 \
+            --description="Docker repository for Industrial-MCP" \
+            --project=${{ secrets.GCP_PROJECT_ID }} || true
+          echo "Artifact Registry repository industrial-repo is ready."
 
       - name: Build and Push Docker Image
         env:
