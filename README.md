@@ -6,12 +6,14 @@
 > **Data:** 05/10/2026  
 > **Status de Engenharia:** Concluído & Validado Deterministicamente (Tier 2 Enterprise)
 
+[![CI/CD Pipeline](https://github.com/henriquebotelhogomes/industrial-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/henriquebotelhogomes/industrial-mcp/actions)
+[![DagsHub MLflow](https://img.shields.io/badge/MLOps-DagsHub_MLflow-00b4d8.svg)](https://dagshub.com/henriquebotelhogomes/industrial-mcp.mlflow)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/Protocol-Model_Context_Protocol-purple.svg)](https://modelcontextprotocol.io)
 [![DuckDB](https://img.shields.io/badge/OLAP-DuckDB_1.1-yellow.svg)](https://duckdb.org)
 [![Highcharts](https://img.shields.io/badge/UI-Highcharts_Polar-green.svg)](https://highcharts.com)
 [![Ruff](https://img.shields.io/badge/Linter-Ruff_0_errors-black.svg)](https://astral.sh/ruff)
-[![Tests](https://img.shields.io/badge/Tests-22_Passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-31_Passed-brightgreen.svg)](tests/)
 
 ---
 
