@@ -33,6 +33,13 @@ DEFAULT_FARMS = [
         "farm_state": "MG",
         "total_equips": 34,
     },
+    {
+        "farm_id": 822,
+        "farm_name": "Igarashi.FazendaIgarashi.BA",
+        "farm_city": "Correntina",
+        "farm_state": "BA",
+        "total_equips": 18,
+    },
 ]
 
 DEFAULT_EQUIPMENT = [
@@ -67,6 +74,22 @@ DEFAULT_EQUIPMENT = [
         "radius": 410.0,
         "flow_rate": 190.0,
         "area": 52.0,
+    },
+    {
+        "equip_id": 82201,
+        "farm_id": 822,
+        "farm_name": "Igarashi.FazendaIgarashi.BA",
+        "farm_city": "Correntina",
+        "farm_state": "BA",
+        "equip_name": "IGARASHI_PIVO_01",
+        "type_code": "3",
+        "type_name": "Pivô Central",
+        "maker": "Valmont",
+        "model": "Valley 8000",
+        "nominal_pressure": 3.5,
+        "radius": 450.0,
+        "flow_rate": 210.0,
+        "area": 63.0,
     },
 ]
 
