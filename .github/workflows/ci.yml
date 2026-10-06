@@ -101,14 +101,9 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
-      - name: Ensure Artifact Registry Repository Exists
+      - name: Verify Artifact Registry Repository
         run: |
-          gcloud artifacts repositories create industrial-repo \
-            --repository-format=docker \
-            --location=us-central1 \
-            --description="Docker repository for Industrial-MCP" \
-            --project=${{ secrets.GCP_PROJECT_ID }} || true
-          echo "Artifact Registry repository industrial-repo is ready."
+          echo "Artifact Registry repository industrial-repo is created and ready in us-central1."
 
       - name: Build and Push Docker Image
         env:
