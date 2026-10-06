@@ -1,6 +1,7 @@
 """Medallion Pipeline: Bronze -> Silver -> Gold with DuckDB and Polars."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
@@ -8,6 +9,7 @@ import polars as pl
 
 from src.config import settings
 from src.core.logging import logger, setup_logging
+from src.core.security import anonymize_identifier
 from src.ml.domain_rules import DomainRuleEngine
 
 
@@ -54,27 +56,81 @@ def process_silver_layer() -> pl.DataFrame:
     df_fazendas = pl.read_parquet(fazendas_pq) if fazendas_pq.exists() else pl.DataFrame()
     df_pivo = pl.read_parquet(pivo_pq) if pivo_pq.exists() else pl.DataFrame()
 
-    # Filter for Center Pivots (type_equip == '3') with non-empty payload
-    df_pivots = df_apis.filter((pl.col("type_equip") == "3") & (pl.col("raw_data").is_not_null()))
+    # Filter for Center Pivots (type_equip == '3')
+    df_pivots = df_apis.filter(pl.col("type_equip") == "3")
 
     records: list[dict] = []
-    for row in df_pivots.iter_rows(named=True):
-        raw_json_str = row["raw_data"] or row["raw_last_valid_data"]
-        payload = extract_telemetry_json(raw_json_str)
-        if not payload:
-            continue
+    dlq_records: list[dict] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
 
+    for row in df_pivots.iter_rows(named=True):
         id_farm = int(row["id_farm"])
         id_equip = int(row["id_equip"])
-        api_provider = "WAGNET" if row["nm_api"] == "1" else ("BASE_STATION" if row["nm_api"] == "2" else "METOS")
+        raw_json_str = row["raw_data"] or row["raw_last_valid_data"]
 
-        created_dt = payload.get("CreatedDate") or row["raw_date_time"] or row["log_date_creation"]
+        if not raw_json_str or not str(raw_json_str).strip():
+            dlq_records.append({
+                "id_farm": id_farm,
+                "id_equip": id_equip,
+                "type_equip": "3",
+                "nm_api": str(row.get("nm_api") or "UNKNOWN"),
+                "timestamp": str(row.get("raw_date_time") or now_iso),
+                "raw_payload": None,
+                "rejection_reason": "EMPTY_OR_NULL_PAYLOAD",
+                "ingested_at": now_iso,
+            })
+            continue
+
+        payload = extract_telemetry_json(raw_json_str)
+        if not payload:
+            dlq_records.append({
+                "id_farm": id_farm,
+                "id_equip": id_equip,
+                "type_equip": "3",
+                "nm_api": str(row.get("nm_api") or "UNKNOWN"),
+                "timestamp": str(row.get("raw_date_time") or now_iso),
+                "raw_payload": str(raw_json_str)[:500],
+                "rejection_reason": "CORRUPTED_JSON_OR_INVALID_SCHEMA",
+                "ingested_at": now_iso,
+            })
+            continue
+
         curr_angle = to_float(payload.get("PivotCurrentPosition"), 0.0)
+        percent_timer = to_float(payload.get("PercentTimer"), 0.0)
+        pressure_begin = to_float(payload.get("PressureBeginValue"), 0.0)
+
+        # Physics sanity checks for DLQ
+        if curr_angle < 0.0 or curr_angle > 360.0:
+            dlq_records.append({
+                "id_farm": id_farm,
+                "id_equip": id_equip,
+                "type_equip": "3",
+                "nm_api": str(row.get("nm_api") or "UNKNOWN"),
+                "timestamp": str(payload.get("CreatedDate") or row.get("raw_date_time") or now_iso),
+                "raw_payload": str(raw_json_str)[:500],
+                "rejection_reason": f"PHYSICAL_VIOLATION_ANGLE_{curr_angle}",
+                "ingested_at": now_iso,
+            })
+            continue
+
+        if percent_timer < 0.0 or percent_timer > 100.0:
+            dlq_records.append({
+                "id_farm": id_farm,
+                "id_equip": id_equip,
+                "type_equip": "3",
+                "nm_api": str(row.get("nm_api") or "UNKNOWN"),
+                "timestamp": str(payload.get("CreatedDate") or row.get("raw_date_time") or now_iso),
+                "raw_payload": str(raw_json_str)[:500],
+                "rejection_reason": f"PHYSICAL_VIOLATION_PERCENT_TIMER_{percent_timer}",
+                "ingested_at": now_iso,
+            })
+            continue
+
+        api_provider = "WAGNET" if row["nm_api"] == "1" else ("BASE_STATION" if row["nm_api"] == "2" else "METOS")
+        created_dt = payload.get("CreatedDate") or row["raw_date_time"] or row["log_date_creation"]
         direction = str(payload.get("PivotDirection") or "Forward").capitalize()
         running_status = str(payload.get("PivotRunningStatus") or "Stopped").capitalize()
         water_mode = str(payload.get("WaterMode") or "Dry").capitalize()
-        percent_timer = to_float(payload.get("PercentTimer"), 0.0)
-        pressure_begin = to_float(payload.get("PressureBeginValue"), 0.0)
         pressure_end = to_float(payload.get("PressureEndValue"), 0.0)
         flow_rate = to_float(payload.get("FlowRateMeter1") or payload.get("FlowRateMeter2"), 0.0)
         deg_travelled = to_float(payload.get("DegreesTravelled"), 0.0)
@@ -97,18 +153,35 @@ def process_silver_layer() -> pl.DataFrame:
             "hour_meter": hour_meter,
         })
 
+    # Save Dead Letter Queue (DLQ)
+    dlq_dir = settings.dlq_parquet_dir
+    dlq_dir.mkdir(parents=True, exist_ok=True)
+    df_dlq = pl.DataFrame(dlq_records)
+    out_dlq = dlq_dir / "dlq_sensor_events.parquet"
+    df_dlq.write_parquet(out_dlq)
+    logger.info("dlq_layer_saved", path=str(out_dlq), rejected_records=len(df_dlq))
+
     df_silver = pl.DataFrame(records)
     logger.info("silver_telemetry_extracted", rows=len(df_silver))
 
-    # Join with fazendas metadata
+    # Join with fazendas metadata (with LGPD deterministic pseudonymization)
     if not df_fazendas.is_empty():
         faz_meta = df_fazendas.select([
             pl.col("idFazenda").cast(pl.Int64).alias("id_farm"),
             pl.col("nome").alias("farm_name"),
             pl.col("cidade").alias("farm_city"),
             pl.col("estado").alias("farm_state"),
-            pl.col("Proprietario").alias("farm_owner"),
+            pl.col("Proprietario").alias("raw_owner"),
         ]).unique(subset=["id_farm"])
+
+        # Pseudonymize PII owner column deterministically (ANON_...)
+        anonymized_owners = [
+            anonymize_identifier(o) for o in faz_meta["raw_owner"].to_list()
+        ]
+        faz_meta = faz_meta.with_columns(
+            pl.Series("farm_owner", anonymized_owners, dtype=pl.Utf8)
+        ).drop("raw_owner")
+
         df_silver = df_silver.join(faz_meta, on="id_farm", how="left")
 
     # Join with pivocentral metadata
@@ -184,11 +257,14 @@ def sync_duckdb() -> None:
     con = duckdb.connect(str(db_path))
     silver_pq = str(settings.silver_parquet_dir / "pivot_telemetry.parquet").replace("\\", "/")
     gold_pq = str(settings.gold_parquet_dir / "pivot_gold_metrics.parquet").replace("\\", "/")
+    dlq_pq = str(settings.dlq_parquet_dir / "dlq_sensor_events.parquet").replace("\\", "/")
 
     if Path(settings.silver_parquet_dir / "pivot_telemetry.parquet").exists():
         con.execute(f"CREATE OR REPLACE VIEW v_silver_telemetry AS SELECT * FROM read_parquet('{silver_pq}');")
     if Path(settings.gold_parquet_dir / "pivot_gold_metrics.parquet").exists():
         con.execute(f"CREATE OR REPLACE VIEW v_gold_metrics AS SELECT * FROM read_parquet('{gold_pq}');")
+    if Path(settings.dlq_parquet_dir / "dlq_sensor_events.parquet").exists():
+        con.execute(f"CREATE OR REPLACE VIEW v_dlq_sensor_events AS SELECT * FROM read_parquet('{dlq_pq}');")
 
     tables = con.execute("SHOW TABLES;").fetchall()
     con.close()

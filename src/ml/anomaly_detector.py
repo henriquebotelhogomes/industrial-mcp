@@ -1,8 +1,11 @@
-"""Isolation Forest-based operational anomaly detector for SCADA / PLC telemetry."""
+from pathlib import Path
+from typing import Any
 
 import numpy as np
+import polars as pl
 from sklearn.ensemble import IsolationForest
 
+from src.config import settings
 from src.core.logging import logger
 from src.ml.domain_rules import AnomalyReport, DomainRuleEngine, TelemetryEvent
 
@@ -19,7 +22,11 @@ class OperationalAnomalyDetector:
             n_jobs=1,
         )
         self.is_fitted = False
-        self._bootstrap_default_model()
+        gold_file = settings.gold_parquet_dir / "pivot_gold_metrics.parquet"
+        if gold_file.exists():
+            self.fit_from_gold_layer(gold_file)
+        else:
+            self._bootstrap_default_model()
 
     def _bootstrap_default_model(self) -> None:
         """Trains initial baseline model on synthetic + historical boundaries.
@@ -47,6 +54,100 @@ class OperationalAnomalyDetector:
         self.model.fit(X)
         self.is_fitted = True
         logger.info("isolation_forest_trained", n_samples=X.shape[0], contamination=self.contamination)
+
+    def fit_from_gold_layer(self, gold_path: Path | None = None, split_ratio: float = 0.8) -> dict[str, Any]:
+        """Trains Isolation Forest on historical Gold telemetry with strict temporal split.
+
+        Enforces strict temporal split (no future data leakage) by sorting chronologically
+        and training only on historical window T < T_cutoff, evaluating on T >= T_cutoff.
+        """
+        path = gold_path or (settings.gold_parquet_dir / "pivot_gold_metrics.parquet")
+        if not path.exists():
+            logger.warn("gold_parquet_not_found_fallback_to_bootstrap", path=str(path))
+            self._bootstrap_default_model()
+            return {"status": "FALLBACK_BOOTSTRAP", "reason": "file_not_found"}
+
+        try:
+            df = pl.read_parquet(path)
+            if df.is_empty():
+                self._bootstrap_default_model()
+                return {"status": "FALLBACK_BOOTSTRAP", "reason": "empty_dataframe"}
+
+            # Sort strictly chronologically by timestamp
+            df_sorted = df.sort("timestamp")
+            n_total = len(df_sorted)
+            cutoff_idx = int(n_total * split_ratio)
+
+            train_df = df_sorted[:cutoff_idx]
+            test_df = df_sorted[cutoff_idx:]
+
+            # Filter nominal training records (running without flagged pump/line anomalies)
+            nominal_train = train_df.filter(
+                (pl.col("running_status") == "Running")
+                & (~pl.col("flag_pressure_anomaly"))
+            )
+
+            # Extract real empirical samples from training split
+            if len(nominal_train) > 0:
+                p_begin = nominal_train["pressure_begin"].to_numpy().clip(0.0, 10.0)
+                p_begin = np.where(p_begin > 10.0, p_begin / 10.0, p_begin)
+                p_end = nominal_train["pressure_end"].to_numpy().clip(0.0, 10.0)
+                percent = nominal_train["percent_timer"].to_numpy().clip(0.0, 100.0)
+                ang_speed = (percent / 100.0) * 1.5
+                p_ratio = np.where(p_begin > 0.1, p_end / np.maximum(p_begin, 0.1), 0.0)
+                flow = nominal_train["flow_rate"].to_numpy().clip(0.0, 500.0)
+                X_real = np.column_stack([p_begin, percent, ang_speed, p_ratio, flow])
+            else:
+                X_real = np.empty((0, 5))
+
+            # Calibrate operational baseline anchored strictly on train_df equipment metadata
+            np.random.seed(42)
+            n_aug = 200
+            nom_p_vals = train_df["nominal_pressure"].drop_nulls().to_numpy()
+            nom_p = float(np.mean(nom_p_vals)) if len(nom_p_vals) > 0 else 3.2
+            if nom_p > 10.0:
+                nom_p = nom_p / 10.0
+
+            nom_flow_vals = train_df["nominal_flow"].drop_nulls().to_numpy()
+            nom_flow = float(np.mean(nom_flow_vals)) if len(nom_flow_vals) > 0 else 180.0
+
+            aug_pressure = np.random.normal(loc=nom_p, scale=0.3, size=n_aug).clip(1.5, 5.0)
+            aug_percent = np.random.uniform(30.0, 95.0, size=n_aug)
+            aug_speed = (aug_percent / 100.0) * np.random.uniform(1.0, 2.5, size=n_aug)
+            aug_ratio = np.random.normal(loc=0.85, scale=0.05, size=n_aug).clip(0.65, 0.98)
+            aug_flow = np.random.normal(loc=nom_flow, scale=15.0, size=n_aug).clip(100.0, 300.0)
+
+            X_aug = np.column_stack([aug_pressure, aug_percent, aug_speed, aug_ratio, aug_flow])
+            X_train = np.vstack([X_real, X_aug]) if len(X_real) > 0 else X_aug
+            self.fit(X_train)
+
+            # Evaluate on out-of-time test set (strict temporal validation without leakage)
+            p_test = test_df["pressure_begin"].to_numpy().clip(0.0, 10.0)
+            p_test = np.where(p_test > 10.0, p_test / 10.0, p_test)
+            p_test_end = test_df["pressure_end"].to_numpy().clip(0.0, 10.0)
+            pct_test = test_df["percent_timer"].to_numpy().clip(0.0, 100.0)
+            speed_test = (pct_test / 100.0) * 1.5
+            ratio_test = np.where(p_test > 0.1, p_test_end / np.maximum(p_test, 0.1), 0.0)
+            flow_test = test_df["flow_rate"].to_numpy().clip(0.0, 500.0)
+
+            X_test = np.column_stack([p_test, pct_test, speed_test, ratio_test, flow_test])
+            preds = self.model.predict(X_test)
+            anomaly_rate = float(np.mean(preds == -1))
+
+            metrics = {
+                "status": "SUCCESS",
+                "total_records": n_total,
+                "train_samples": len(X_train),
+                "test_samples": len(X_test),
+                "test_anomaly_rate": round(anomaly_rate, 4),
+                "split_ratio": split_ratio,
+            }
+            logger.info("temporal_split_training_completed", **metrics)
+            return metrics
+        except Exception as e:
+            logger.error("error_training_from_gold_fallback", error=str(e))
+            self._bootstrap_default_model()
+            return {"status": "FALLBACK_BOOTSTRAP", "error": str(e)}
 
     def extract_features(
         self,

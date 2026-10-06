@@ -48,5 +48,9 @@ class Settings(BaseSettings):
     def gold_parquet_dir(self) -> Path:
         return self.parquet_dir / "gold"
 
+    @property
+    def dlq_parquet_dir(self) -> Path:
+        return self.parquet_dir / "dlq"
+
 
 settings = Settings()

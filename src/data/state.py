@@ -11,6 +11,7 @@ from src.core.logging import logger
 from src.data.catalog import asset_catalog
 from src.ml.anomaly_detector import detector
 from src.ml.domain_rules import AnomalyReport, TelemetryEvent
+from src.ml.drift_monitor import drift_monitor
 
 
 class TelemetryStateManager:
@@ -176,9 +177,13 @@ class TelemetryStateManager:
                 }
                 logger.warn("hitl_ticket_generated", ticket=self.pending_hitl_ticket)
 
+            # Record event in drift monitor
+            drift_monitor.record_event(event)
+
             payload = {
                 "telemetry": event.model_dump(),
                 "anomaly": report.model_dump(),
+                "drift": drift_monitor.evaluate_drift(),
                 "hitl_ticket": self.pending_hitl_ticket,
                 "is_playing": self.is_playing,
                 "speed": self.speed,

@@ -1,11 +1,13 @@
 """FastAPI application with native WebSockets, Scalar docs, and SCADA static files."""
 
 import asyncio
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import structlog
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -112,6 +114,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def structlog_context_middleware(request: Request, call_next):
+    """Binds request correlation trace_id and equip_id to structlog contextvars."""
+    trace_id = request.headers.get("X-Trace-ID", uuid.uuid4().hex[:12])
+    equip_id = request.query_params.get("equip_id") or request.headers.get("X-Equip-ID")
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(trace_id=trace_id, equip_id=equip_id)
+    response = await call_next(request)
+    response.headers["X-Trace-ID"] = trace_id
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Official Model Context Protocol (MCP) SSE Transport Mount
+# ---------------------------------------------------------------------------
+
+# Exposes canonical SSE transport on /mcp/sse and /mcp/messages for external AI clients
+app.mount("/mcp", mcp_server.sse_app())
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +268,7 @@ async def list_mcp_tools():
         {
             "name": t.name,
             "description": t.description,
-            "input_schema": t.inputSchema,
+            "input_schema": getattr(t, "input_schema", getattr(t, "inputSchema", {})),
         }
         for t in tools
     ]

@@ -6,10 +6,25 @@ import sys
 import structlog
 
 
+def inject_mandatory_context(
+    logger: structlog.types.WrappedLogger,
+    method_name: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
+    """Enforces injection of mandatory trace_id and equip_id fields per GEMINI.md."""
+    ctx = structlog.contextvars.get_contextvars()
+    if "trace_id" not in event_dict:
+        event_dict["trace_id"] = ctx.get("trace_id", "system")
+    if "equip_id" not in event_dict:
+        event_dict["equip_id"] = ctx.get("equip_id", None)
+    return event_dict
+
+
 def setup_logging(log_level: str = "INFO") -> None:
     """Configures structured JSON logging with equip_id, trace_id, and timestamp context."""
     shared_processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
+        inject_mandatory_context,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
