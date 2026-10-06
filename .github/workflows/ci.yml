@@ -107,9 +107,11 @@ jobs:
 
       - name: Build and Push Docker Image
         env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          RAW_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
+          # Strip any leading/trailing whitespace, newlines or carriage returns
+          PROJECT_ID=$(echo "${RAW_PROJECT_ID}" | tr -d '[:space:]')
           IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT_ID}/industrial-repo/industrial-mcp:${COMMIT_SHA}"
           IMAGE_LATEST="us-central1-docker.pkg.dev/${PROJECT_ID}/industrial-repo/industrial-mcp:latest"
           echo "Building image: ${IMAGE_URI}"
@@ -119,17 +121,22 @@ jobs:
           docker push "${IMAGE_LATEST}"
 
       - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: industrial-mcp
-          image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/industrial-repo/industrial-mcp:${{ github.sha }}
-          region: us-central1
-          flags: |
-            --port=8000
-            --allow-unauthenticated
-            --min-instances=0
-            --max-instances=2
-            --memory=1Gi
-            --cpu=1
+        env:
+          RAW_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          PROJECT_ID=$(echo "${RAW_PROJECT_ID}" | tr -d '[:space:]')
+          IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT_ID}/industrial-repo/industrial-mcp:${COMMIT_SHA}"
+          echo "Deploying ${IMAGE_URI} to Cloud Run service industrial-mcp..."
+          gcloud run deploy industrial-mcp \
+            --image="${IMAGE_URI}" \
+            --region=us-central1 \
+            --project="${PROJECT_ID}" \
+            --port=8000 \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --max-instances=2 \
+            --memory=1Gi \
+            --cpu=1 \
             --timeout=300s
 
