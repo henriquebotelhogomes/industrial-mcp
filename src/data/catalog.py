@@ -113,7 +113,8 @@ class AssetCatalogService:
                 )
                 """)
                 # Seed default rows if empty
-                count = con.execute("SELECT count(*) FROM v_equipment_catalog").fetchone()[0]
+                row_count = con.execute("SELECT count(*) FROM v_equipment_catalog").fetchone()
+                count = row_count[0] if row_count else 0
                 if count == 0:
                     for eq in DEFAULT_EQUIPMENT:
                         con.execute("""
@@ -357,9 +358,12 @@ class AssetCatalogService:
         except Exception as e:
             logger.error("error_querying_farms", error=str(e))
             # Fallback to seeded farms for clean CI / ephemeral test environments
+            clean_search = search.strip().lower()
             matching_defaults = [
                 f for f in DEFAULT_FARMS
-                if not search.strip() or search.lower() in f["farm_name"].lower() or search.lower() in f["farm_city"].lower()
+                if not clean_search
+                or clean_search in str(f.get("farm_name", "")).lower()
+                or clean_search in str(f.get("farm_city", "")).lower()
             ]
             return matching_defaults[:limit]
 
@@ -481,11 +485,16 @@ class AssetCatalogService:
             return equips
         except Exception as e:
             logger.error("error_querying_equipment", error=str(e))
+            clean_search = search.strip().lower()
             matching_defaults = [
                 eq for eq in DEFAULT_EQUIPMENT
                 if (farm_id is None or eq["farm_id"] == farm_id)
                 and (not type_code or type_code == "all" or eq["type_code"] == type_code)
-                and (not search.strip() or search.lower() in eq["equip_name"].lower() or search.lower() in eq["farm_name"].lower())
+                and (
+                    not clean_search
+                    or clean_search in str(eq.get("equip_name", "")).lower()
+                    or clean_search in str(eq.get("farm_name", "")).lower()
+                )
             ]
             if include_equip_id is not None and not any(eq["equip_id"] == include_equip_id for eq in matching_defaults):
                 spec = next((eq for eq in DEFAULT_EQUIPMENT if eq["equip_id"] == include_equip_id), None)
