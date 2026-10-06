@@ -183,9 +183,14 @@ document.addEventListener("DOMContentLoaded", () => {
             style: { color: "#10b981", fontSize: "11px", fontWeight: "600" }
           },
           min: 0,
-          max: 5,
+          softMax: 10,
           gridLineColor: "rgba(51, 65, 85, 0.4)",
-          labels: { style: { color: "#10b981", fontSize: "10px" } }
+          labels: {
+            style: { color: "#10b981", fontSize: "10px" },
+            formatter: function () {
+              return this.value + " bar";
+            }
+          }
         },
         {
           title: {
@@ -196,7 +201,12 @@ document.addEventListener("DOMContentLoaded", () => {
           min: 0,
           max: 100,
           gridLineColor: "transparent",
-          labels: { style: { color: "#f59e0b", fontSize: "10px" } }
+          labels: {
+            style: { color: "#f59e0b", fontSize: "10px" },
+            formatter: function () {
+              return this.value + "%";
+            }
+          }
         }
       ],
       tooltip: {
@@ -205,20 +215,30 @@ document.addEventListener("DOMContentLoaded", () => {
         borderColor: "#334155",
         style: { color: "#f8fafc", fontSize: "12px" }
       },
-      legend: { enabled: false },
+      legend: {
+        enabled: true,
+        align: "center",
+        verticalAlign: "top",
+        layout: "horizontal",
+        itemStyle: { color: "#cbd5e1", fontSize: "11px", fontWeight: "600" },
+        itemHoverStyle: { color: "#ffffff" },
+        symbolRadius: 4
+      },
       series: [
         {
-          name: "Pressão de Base",
+          name: "Pressão (bar)",
           yAxis: 0,
           color: "#10b981",
           lineWidth: 2.5,
+          marker: { enabled: true, radius: 3, symbol: "circle" },
           data: []
         },
         {
-          name: "Percentímetro CLP",
+          name: "Percentímetro (%)",
           yAxis: 1,
           color: "#f59e0b",
           lineWidth: 2,
+          marker: { enabled: true, radius: 3, symbol: "diamond" },
           data: []
         }
       ]
@@ -381,11 +401,23 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 3. Update Spline Time-Series
-    if (timeSeriesChart && timeSeriesChart.series) {
+    if (timeSeriesChart && timeSeriesChart.series && timeSeriesChart.series[0] && timeSeriesChart.series[1]) {
       const timeLabel = new Date().toLocaleTimeString();
       const shift = timeSeriesChart.series[0].data.length > 25;
-      timeSeriesChart.series[0].addPoint([timeLabel, tel.pressure_begin], false, shift);
-      timeSeriesChart.series[1].addPoint([timeLabel, tel.percent_timer], true, shift);
+      const curP = tel.pressure_begin !== undefined ? tel.pressure_begin : 0;
+      const curPct = tel.percent_timer !== undefined ? tel.percent_timer : 0;
+
+      // Auto-scale Pressure Y-axis to guarantee both series remain completely inside the chart
+      if (timeSeriesChart.yAxis && timeSeriesChart.yAxis[0]) {
+        const curMax = timeSeriesChart.yAxis[0].max || 10;
+        if (curP >= curMax * 0.85) {
+          const newMax = Math.ceil((curP * 1.3) / 2) * 2;
+          timeSeriesChart.yAxis[0].setExtremes(0, Math.max(10, newMax), false);
+        }
+      }
+
+      timeSeriesChart.series[0].addPoint([timeLabel, curP], false, shift);
+      timeSeriesChart.series[1].addPoint([timeLabel, curPct], true, shift);
     }
 
     // 4. Update Watchdog & ML State
@@ -860,6 +892,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         syncActiveAssetUI(currentActiveSpec);
         addMcpLog(`[SCADA ATIVO ALTERADO] #${targetId} ${currentActiveSpec ? currentActiveSpec.equip_name : ''} ativado.`);
+
+        // Reset and pre-scale time series chart for the new active asset
+        if (timeSeriesChart && timeSeriesChart.series && timeSeriesChart.series[0] && timeSeriesChart.series[1]) {
+          timeSeriesChart.series[0].setData([], false);
+          timeSeriesChart.series[1].setData([], false);
+          const nomP = currentActiveSpec?.nominal_pressure || 3.4;
+          const initialMax = Math.max(10, Math.ceil((nomP * 1.35) / 2) * 2);
+          if (timeSeriesChart.yAxis && timeSeriesChart.yAxis[0]) {
+            timeSeriesChart.yAxis[0].setExtremes(0, initialMax, true);
+          }
+        }
+
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ action: "select_equipment", equip_id: targetId }));
         }
