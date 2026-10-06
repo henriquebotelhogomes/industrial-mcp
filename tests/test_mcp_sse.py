@@ -7,6 +7,35 @@ from src.web.app import app
 
 
 @pytest.mark.asyncio
+async def test_mcp_portal_html_and_trailing_slash():
+    """Verifies that /mcp and /mcp/ return the human-readable MCP Hub HTML page."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        r1 = await client.get("/mcp")
+        assert r1.status_code == 200
+        assert "text/html" in r1.headers.get("content-type", "")
+        assert "Industrial-MCP Hub" in r1.text
+
+        r2 = await client.get("/mcp/")
+        assert r2.status_code == 200
+        assert "text/html" in r2.headers.get("content-type", "")
+        assert "Industrial-MCP Hub" in r2.text
+
+
+@pytest.mark.asyncio
+async def test_mcp_portal_json_discovery():
+    """Verifies that /mcp returns structured JSON metadata when requested with Accept: application/json."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/mcp", headers={"Accept": "application/json"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "online"
+        assert data["transport"] == "sse"
+        assert data["endpoints"]["sse"] == "/mcp/sse"
+        assert len(data["tools"]) >= 3
+        assert len(data["resources"]) >= 2
+
+
+@pytest.mark.asyncio
 async def test_mcp_sse_transport_mounted():
     """Verifies that /mcp/sse endpoint is mounted and accessible via HTTP."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

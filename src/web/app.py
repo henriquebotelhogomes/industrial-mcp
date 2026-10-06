@@ -9,7 +9,7 @@ from typing import Any
 import structlog
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -129,8 +129,349 @@ async def structlog_context_middleware(request: Request, call_next):
 
 
 # ---------------------------------------------------------------------------
-# Official Model Context Protocol (MCP) SSE Transport Mount
+# Official Model Context Protocol (MCP) Portal & SSE Transport Mount
 # ---------------------------------------------------------------------------
+
+@app.get("/mcp", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/mcp/", response_class=HTMLResponse, include_in_schema=False)
+async def mcp_portal(request: Request) -> Response:
+    """Provides human-readable diagnostic portal and JSON metadata for MCP gateway."""
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept and "text/html" not in accept:
+        return JSONResponse(
+            content={
+                "server_name": settings.mcp_server_name,
+                "status": "online",
+                "transport": "sse",
+                "protocol": "Model Context Protocol (FastMCP)",
+                "endpoints": {
+                    "sse": "/mcp/sse",
+                    "messages": "/mcp/messages",
+                    "portal": "/mcp",
+                },
+                "tools": [
+                    {
+                        "name": "diagnose_equipment",
+                        "description": "Detecção de anomalias hidromecânicas com Isolation Forest (System 1) e Z-Score.",
+                    },
+                    {
+                        "name": "request_emergency_stop",
+                        "description": "Ordem de parada emergencial e despressurização do pivô. Trava HITL obrigatória.",
+                    },
+                    {
+                        "name": "calculate_application_depth",
+                        "description": "Cálculo hidrodinâmico de lâmina d'água aplicada (mm) por setor.",
+                    },
+                ],
+                "resources": [
+                    {
+                        "uri": "telemetry://fleet/overview",
+                        "description": "Métricas consolidadas da frota (pivôs ativos, irrigação e anomalias de pressão).",
+                    },
+                    {
+                        "uri": "telemetry://pivot/{pivot_id}/live",
+                        "description": "Telemetria SCADA em tempo real para o equipamento selecionado.",
+                    },
+                    {
+                        "uri": "telemetry://pivot/{pivot_id}/specs",
+                        "description": "Especificações mecânicas e operacionais de fábrica (raio, vazão, pressão de serviço).",
+                    },
+                ],
+                "docs_url": "/docs",
+                "scada_dashboard": "/",
+            }
+        )
+
+    html_content = """<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Industrial-MCP // Gateway & Hub Operacional</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚜</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+      body { background-color: #0b0f19; color: #f1f5f9; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      .code-bg { background-color: #030712; }
+      .glow-border { box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.15); }
+    </style>
+  </head>
+  <body class="min-h-screen p-4 sm:p-8 flex flex-col items-center">
+    <div class="max-w-5xl w-full space-y-6">
+
+      <!-- Top Header Navigation -->
+      <header class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl backdrop-blur glow-border">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-2xl">
+            🤖
+          </div>
+          <div>
+            <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              Industrial-MCP Hub
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> ONLINE
+              </span>
+            </h1>
+            <p class="text-xs text-slate-400">Model Context Protocol Gateway • FastMCP SSE Transport • Industrial Telemetry</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="/" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-chart-pie text-cyan-400"></i> SCADA 360°
+          </a>
+          <a href="/docs" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition flex items-center gap-1.5">
+            <i class="fa-solid fa-book-open"></i> Scalar Docs
+          </a>
+        </div>
+      </header>
+
+      <!-- Architecture & Connection Context -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+        <div class="flex items-start gap-3">
+          <div class="p-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-sm mt-0.5">
+            <i class="fa-solid fa-circle-nodes"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-semibold text-white">Como Funciona a Conexão MCP</h2>
+            <p class="text-sm text-slate-300 mt-1 leading-relaxed">
+              O <strong>Model Context Protocol (MCP)</strong> é o padrão aberto da Anthropic para interoperabilidade segura entre modelos de inteligência artificial e ferramentas corporativas. Em implementações com transporte HTTP, o protocolo opera estritamente via <strong>Server-Sent Events (SSE)</strong> em <code class="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">/mcp/sse</code> e mensageria JSON-RPC em <code class="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">/mcp/messages</code>.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-4 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="font-mono text-emerald-400 font-bold uppercase">Endpoint SSE (Stream Unidirecional)</span>
+              <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">GET</span>
+            </div>
+            <div class="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+              <code class="text-xs font-mono text-slate-200 select-all" id="sse-url">http://localhost:8000/mcp/sse</code>
+              <button onclick="copyToClipboard('sse-url', 'btn-copy-sse')" id="btn-copy-sse" class="text-xs text-slate-400 hover:text-emerald-400 transition ml-2">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+            <p class="text-xs text-slate-500">Utilizado por clientes de IA para manter o túnel de escuta ativo em tempo real.</p>
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-4 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="font-mono text-cyan-400 font-bold uppercase">Endpoint Messages (JSON-RPC POST)</span>
+              <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">POST</span>
+            </div>
+            <div class="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+              <code class="text-xs font-mono text-slate-200 select-all" id="msg-url">http://localhost:8000/mcp/messages</code>
+              <button onclick="copyToClipboard('msg-url', 'btn-copy-msg')" id="btn-copy-msg" class="text-xs text-slate-400 hover:text-cyan-400 transition ml-2">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+            <p class="text-xs text-slate-500">Utilizado pelo cliente para invocar Tools e solicitar Resources com sessionId.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick AI Client Configuration -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-semibold text-white flex items-center gap-2">
+            <i class="fa-solid fa-terminal text-emerald-400"></i> Configuração para Clientes de IA
+          </h2>
+          <span class="text-xs text-slate-400">Claude Desktop, Cursor, Antigravity, Claude Code</span>
+        </div>
+        <p class="text-xs text-slate-300">
+          Adicione o bloco abaixo no arquivo de configuração do seu cliente (ex: <code class="text-amber-300">claude_desktop_config.json</code> ou <code class="text-amber-300">.cursor/mcp.json</code>):
+        </p>
+        <div class="relative">
+          <pre class="code-bg border border-slate-800 p-4 rounded-xl text-xs font-mono text-emerald-300 overflow-x-auto"><code id="client-config">{
+  "mcpServers": {
+    "industrial-telemetry": {
+      "url": "http://localhost:8000/mcp/sse"
+    }
+  }
+}</code></pre>
+          <button onclick="copyToClipboard('client-config', 'btn-copy-cfg')" id="btn-copy-cfg" class="absolute top-3 right-3 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition flex items-center gap-1.5">
+            <i class="fa-regular fa-copy"></i> Copiar JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- Tools & Resources Catalog -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Tools Section -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <i class="fa-solid fa-wrench text-amber-400"></i> Ferramentas (@mcp.tool)
+          </h2>
+          <div class="space-y-3">
+            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-bold text-emerald-400">diagnose_equipment</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">System 1 ML</span>
+              </div>
+              <p class="text-xs text-slate-300">Diagnóstico eletromecânico e hidrodinâmico com Isolation Forest e Z-Score Robusto.</p>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-bold text-amber-400">request_emergency_stop</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">HITL Guardrail</span>
+              </div>
+              <p class="text-xs text-slate-300">Ordem de parada emergencial e despressurização do PLC. Exige aprovação de operador humano.</p>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-bold text-cyan-400">calculate_application_depth</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Física Aplicada</span>
+              </div>
+              <p class="text-xs text-slate-300">Calcula lâmina d'água aplicada (mm) baseada na vazão, percentímetro e geometria do pivô.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resources Section -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <i class="fa-solid fa-database text-cyan-400"></i> Recursos (telemetry://)
+          </h2>
+          <div class="space-y-3">
+            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-bold text-cyan-400">telemetry://fleet/overview</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">Zero-Token</span>
+              </div>
+              <p class="text-xs text-slate-300">Resumo consolidado da frota: contagem de fazendas, pivôs em operação e alertas de pressão.</p>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-bold text-indigo-400">telemetry://pivot/{pivot_id}/live</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">SCADA Stream</span>
+              </div>
+              <p class="text-xs text-slate-300">Última leitura de telemetria higienizada do pivô (pressão, percentímetro, ângulo atual).</p>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-bold text-emerald-400">telemetry://pivot/{pivot_id}/specs</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">Catalog Spec</span>
+              </div>
+              <p class="text-xs text-slate-300">Ficha técnica de engenharia: raio, fabricante, vazão nominal e tempo de volta.</p>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/50 space-y-1">
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span>Formato MIME Oficial</span>
+                <span class="font-mono text-emerald-400">application/json</span>
+              </div>
+              <p class="text-xs text-slate-500">Recursos consumíveis por LLMs sem custo de tokens de raciocínio de tool-use.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live SSE Connection Inspector -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-semibold text-white flex items-center gap-2">
+              <i class="fa-solid fa-satellite-dish text-emerald-400"></i> Testador ao Vivo de Stream SSE
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Executa handshake nativo EventSource direto deste navegador contra /mcp/sse</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-test-sse" onclick="toggleSseStream()" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5">
+              <i class="fa-solid fa-play"></i> Iniciar Teste SSE
+            </button>
+            <button id="btn-clear-sse" onclick="clearSseLogs()" class="px-3 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              Limpar
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 font-mono text-xs text-slate-300 h-36 overflow-y-auto space-y-1" id="sse-console">
+          <div class="text-slate-500">[idle] Clique em "Iniciar Teste SSE" para disparar handshake com FastMCP Server...</div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="text-center text-xs text-slate-500 py-3">
+        Industrial-MCP • Cartão de TODOS • Engenharia de IA, MLOps e Supervisório SCADA
+      </footer>
+
+    </div>
+
+    <script>
+      function copyToClipboard(elementId, btnId) {
+        const text = document.getElementById(elementId).innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          const btn = document.getElementById(btnId);
+          const original = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> Copiado!';
+          setTimeout(() => { btn.innerHTML = original; }, 2000);
+        });
+      }
+
+      let eventSource = null;
+
+      function logSse(msg, color = 'text-slate-300') {
+        const consoleEl = document.getElementById('sse-console');
+        const line = document.createElement('div');
+        line.className = color;
+        const time = new Date().toLocaleTimeString();
+        line.innerText = `[${time}] ${msg}`;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      function clearSseLogs() {
+        document.getElementById('sse-console').innerHTML = '<div class="text-slate-500">[limpo] Console pronto.</div>';
+      }
+
+      function toggleSseStream() {
+        const btn = document.getElementById('btn-test-sse');
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+          logSse('Conexão SSE encerrada pelo usuário.', 'text-amber-400');
+          btn.innerHTML = '<i class="fa-solid fa-play"></i> Iniciar Teste SSE';
+          btn.className = 'px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5';
+          return;
+        }
+
+        logSse('Iniciando handshake EventSource com /mcp/sse...', 'text-cyan-400');
+        try {
+          eventSource = new EventSource('/mcp/sse');
+          btn.innerHTML = '<i class="fa-solid fa-stop"></i> Parar Teste SSE';
+          btn.className = 'px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-500 text-white transition flex items-center gap-1.5';
+
+          eventSource.onopen = () => {
+            logSse('✅ Conexão SSE estabelecida com sucesso (HTTP 200 text/event-stream)!', 'text-emerald-400');
+          };
+
+          eventSource.onmessage = (event) => {
+            logSse(`📨 Evento recebido: ${event.data}`, 'text-emerald-300');
+          };
+
+          eventSource.addEventListener('endpoint', (event) => {
+            logSse(`🎯 FastMCP Endpoint negociado: ${event.data}`, 'text-cyan-300 font-bold');
+          });
+
+          eventSource.onerror = (err) => {
+            logSse('⚠️ Conexão em standby ou fechada pelo servidor.', 'text-slate-400');
+          };
+        } catch (e) {
+          logSse(`❌ Falha ao conectar: ${e.message}`, 'text-red-400');
+        }
+      }
+    </script>
+  </body>
+</html>
+"""
+    return HTMLResponse(content=html_content)
+
 
 # Exposes canonical SSE transport on /mcp/sse and /mcp/messages for external AI clients
 app.mount("/mcp", mcp_server.sse_app())

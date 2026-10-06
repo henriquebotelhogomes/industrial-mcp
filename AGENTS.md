@@ -11,8 +11,10 @@ Este documento funciona como o contrato canônico de consumo para agentes de IA 
 ## 1. Transporte & Conexão do Servidor MCP
 * **Interface:** FastMCP (Protocolo Oficial Model Context Protocol)
 * **Transporte:** HTTP Server-Sent Events (SSE)
-* **Endpoint de Conexão:** `http://localhost:8000/mcp`
-* **Healthcheck:** `http://localhost:8000/healthz`
+* **Portal & Diagnóstico Web:** `http://localhost:8000/mcp` (Dashboard visual em HTML e metadados JSON com `Accept: application/json`)
+* **Endpoint de Streaming SSE:** `http://localhost:8000/mcp/sse` (Canal unidirecional Server-Sent Events para clientes de IA)
+* **Endpoint de Mensageria RPC:** `http://localhost:8000/mcp/messages` (Envio de chamadas de ferramentas e JSON-RPC do cliente)
+* **Status da Aplicação:** `http://localhost:8000/api/status`
 
 ---
 
@@ -21,49 +23,47 @@ Os *Resources* permitem que modelos de IA leiam o estado atual do parque de irri
 
 | URI do Recurso | Tipo MIME | Descrição | Origem dos Dados |
 | :--- | :--- | :--- | :--- |
-| `telemetry://status` | `application/json` | Visão agregada do estado operacional dos pivôs e alarmes ativos. | View DuckDB `v_pivot_gold_metrics` |
-| `telemetry://sensors` | `application/json` | Amostra em tempo real das últimas 100 leituras de sensores e telemetria. | View DuckDB `v_pivot_telemetry` |
+| `telemetry://fleet/overview` | `application/json` | Visão agregada da frota: contagem de fazendas, pivôs ativos e alarmes de pressão. | View DuckDB `v_gold_metrics` |
+| `telemetry://pivot/{pivot_id}/live` | `application/json` | Última telemetria higienizada do pivô (pressão, percentímetro, ângulo, vazão). | Cache de memória ou DuckDB `v_gold_metrics` |
+| `telemetry://pivot/{pivot_id}/specs` | `application/json` | Ficha técnica de engenharia de fábrica (raio, fabricante, vazão nominal, tempo de volta). | DuckDB `read_parquet(bronze/pivocentral.parquet)` |
 
 ---
 
 ## 3. Catálogo Canônico de MCP Tools (`@mcp.tool`)
 Ferramentas expostas aos agentes de IA para diagnóstico analítico e controle de campo:
 
-### 3.1 `get_pivots_list`
-* **Descrição:** Retorna a lista completa de pivôs centrais e sistemas de aspersão cadastrados no sistema.
-* **Parâmetros:** Nenhum.
-* **Retorno:** `List[str]` com identificadores de equipamentos.
-
-### 3.2 `get_pivot_telemetry`
-* **Descrição:** Recupera séries temporais de telemetria higienizada (pressão, corrente, vibração, velocidade angular) para um pivô específico.
+### 3.1 `diagnose_equipment`
+* **Descrição:** Diagnostica o estado operacional do pivô central usando regras físicas de domínio (Valmont) e modelo estatístico de detecção de anomalias (Isolation Forest / Z-Score).
 * **Parâmetros:**
-  * `equip_id` (`str`, obrigatório): Identificador do pivô (ex: `"PIVO_01"`).
-  * `limit` (`int`, opcional, default=100): Quantidade máxima de registros retornados.
-* **Retorno:** `List[Dict[str, Any]]` com telemetrias ordenadas cronologicamente.
+  * `pivot_id` (`int`, obrigatório): Identificador numérico do pivô (ex: `14863`).
+  * `current_angle` (`float`, obrigatório): Ângulo azimutal atual do pivô em graus (0° a 360°).
+  * `pressure_begin` (`float`, obrigatório): Pressão manométrica no centro em bar.
+  * `percent_timer` (`float`, obrigatório): Regulagem do percentímetro de velocidade (0% a 100%).
+  * `water_mode` (`str`, obrigatório): Modo operacional (`"Com Agua"` ou `"Sem Agua"`).
+  * `previous_angle` (`float`, opcional): Leitura anterior para cálculo de velocidade e salto de encoder.
+* **Retorno:** JSON string contendo `is_anomaly`, `anomaly_score`, `flags` e diagnóstico textual.
 
-### 3.3 `predict_anomalies_batch`
-* **Descrição:** Executa inferência em lote com o modelo *Isolation Forest* (System 1) para diagnosticar anomalias eletromecânicas recentes.
+### 3.2 `request_emergency_stop` ⚠️ (Human-in-the-Loop)
+* **Descrição:** Emite solicitação de desenergização e parada de emergência do pivô e desligamento da motobomba.
+* **Política de Segurança:** **Exige aprovação humana explícita (HITL)**. Se `operator_confirmed=False`, a ferramenta bloqueia a escrita no PLC, gera um chamado formal de segurança com `ticket_id` e solicita que o agente instrua o operador a confirmar na console SCADA.
 * **Parâmetros:**
-  * `equip_id` (`str`, obrigatório): Identificador do pivô a diagnosticar.
-  * `limit` (`int`, opcional, default=50): Número de eventos recentes para inferência.
-* **Retorno:** `Dict[str, Any]` contendo:
-  * `total_analyzed`: Quantidade de amostras avaliadas.
-  * `anomalies_detected`: Número de anomalias encontradas.
-  * `anomaly_rate`: Percentual de anomalia na janela.
-  * `details`: Lista de eventos suspeitos com escore e alertas de domínio.
+  * `pivot_id` (`int`, obrigatório): Identificador do pivô.
+  * `reason` (`str`, obrigatório): Justificativa técnica da parada de emergência.
+  * `operator_confirmed` (`bool`, obrigatório, default=False): Flag de autorização explícita do operador humano.
+* **Retorno:** JSON string contendo `status` (`PENDING_OPERATOR_APPROVAL` ou `APPROVED_AND_EXECUTED`), `ticket_id` e rastreamento de auditoria.
 
-### 3.4 `emergency_stop_pivot` ⚠️ (Human-in-the-Loop)
-* **Descrição:** Emite ordem de parada emergencial e despressurização para o PLC do pivô.
-* **Política de Segurança:** **Exige aprovação humana explícita (HITL)**. Se `confirm=False`, a ferramenta aborta a execução e solicita que o agente peça confirmação do operador humano.
+### 3.3 `calculate_application_depth`
+* **Descrição:** Calcula a lâmina d'água bruta e líquida aplicada ($mm$ por revolução) com base na vazão nominal, percentímetro e geometria do pivô.
 * **Parâmetros:**
-  * `equip_id` (`str`, obrigatório): Identificador do pivô.
-  * `reason` (`str`, obrigatório): Motivo técnico da parada (ex: *"Sobrecarga térmica e queda súbita de pressão"*).
-  * `confirm` (`bool`, obrigatório, default=False): Flag de autorização explícita do operador humano.
-* **Retorno:** `Dict[str, str]` com status da ordem de parada e `audit_trace_id`.
+  * `pivot_radius_meters` (`float`, obrigatório): Raio da última torre em metros.
+  * `flow_rate_m3h` (`float`, obrigatório): Vazão volumétrica nominal do pivô em $m^3/h$.
+  * `percent_timer` (`float`, obrigatório): Posição do percentímetro (0.1% a 100%).
+  * `efficiency_fraction` (`float`, opcional, default=0.88): Eficiência da aspersão (fração entre 0 e 1).
+* **Retorno:** JSON string contendo área irrigada em hectares, tempo por volta completa em horas e lâminas aplicadas ($mm$).
 
 ---
 
 ## 4. Prompts de Sistema & Diretrizes para Agentes de IA
-1. **Priorize Resources antes de Tools:** Para checar status ou leituras gerais, consulte primeiro `telemetry://status` antes de disparar ferramentas analíticas.
-2. **Nunca Force Paradas Críticas sem Confirmação:** O agente deve sempre descrever o diagnóstico para o usuário humano e obter consentimento inequívoco antes de chamar `emergency_stop_pivot(confirm=True)`.
-3. **Respeito à LGPD:** Nunca solicite ou gere dados pessoais de operadores nas interações; utilize apenas os identificadores técnicos sanitizados.
+1. **Priorize Resources antes de Tools:** Para consultar métricas ou especificações de engenharia, consulte primeiro `telemetry://fleet/overview` ou `telemetry://pivot/{pivot_id}/specs` antes de acionar ferramentas analíticas.
+2. **Nunca Force Paradas Críticas sem Confirmação:** O agente de IA deve sempre expor o diagnóstico para o operador humano e solicitar confirmação inequívoca antes de acionar `request_emergency_stop(operator_confirmed=True)`.
+3. **Respeito à LGPD:** Nunca solicite ou gere dados pessoais de operadores nas interações; utilize apenas identificadores técnicos sanitizados.
