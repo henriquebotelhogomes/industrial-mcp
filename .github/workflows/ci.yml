@@ -115,11 +115,17 @@ jobs:
           fi
 
       - name: Build and Push Docker Image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          IMAGE_URI="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/industrial-repo/industrial-mcp:${{ github.sha }}"
-          docker build -t $IMAGE_URI -t us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/industrial-repo/industrial-mcp:latest .
-          docker push $IMAGE_URI
-          docker push us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/industrial-repo/industrial-mcp:latest
+          IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT_ID}/industrial-repo/industrial-mcp:${COMMIT_SHA}"
+          IMAGE_LATEST="us-central1-docker.pkg.dev/${PROJECT_ID}/industrial-repo/industrial-mcp:latest"
+          echo "Building image: ${IMAGE_URI}"
+          docker build -t "${IMAGE_URI}" .
+          docker tag "${IMAGE_URI}" "${IMAGE_LATEST}"
+          docker push "${IMAGE_URI}"
+          docker push "${IMAGE_LATEST}"
 
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
