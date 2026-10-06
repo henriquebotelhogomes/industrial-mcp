@@ -204,7 +204,12 @@ class AssetCatalogService:
         except Exception as e:
             logger.error("failed_to_create_catalog_view", error=str(e))
 
-    def get_farms(self, search: str = "", limit: int = 300) -> list[dict[str, Any]]:
+    def get_farms(
+        self,
+        search: str = "",
+        limit: int = 300,
+        include_farm_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Returns list of farms matching search query with equipment count."""
         try:
             con = duckdb.connect(str(settings.duckdb_path), read_only=True)
@@ -224,8 +229,7 @@ class AssetCatalogService:
                 LIMIT {limit}
             """
             rows = con.execute(query).fetchall()
-            con.close()
-            return [
+            farms = [
                 {
                     "farm_id": r[0],
                     "farm_name": r[1],
@@ -235,6 +239,29 @@ class AssetCatalogService:
                 }
                 for r in rows
             ]
+
+            # Guarantee that include_farm_id is included even if it has fewer equips than top limit
+            if include_farm_id is not None and not any(f["farm_id"] == include_farm_id for f in farms):
+                specific_row = con.execute(f"""
+                    SELECT
+                        farm_id, farm_name, farm_city, farm_state,
+                        COUNT(equip_id) as total_equips
+                    FROM v_equipment_catalog
+                    WHERE farm_id = {include_farm_id}
+                    GROUP BY farm_id, farm_name, farm_city, farm_state
+                    LIMIT 1
+                """).fetchone()
+                if specific_row:
+                    farms.insert(0, {
+                        "farm_id": specific_row[0],
+                        "farm_name": specific_row[1],
+                        "farm_city": specific_row[2],
+                        "farm_state": specific_row[3],
+                        "total_equips": specific_row[4],
+                    })
+
+            con.close()
+            return farms
         except Exception as e:
             logger.error("error_querying_farms", error=str(e))
             return []
@@ -276,6 +303,7 @@ class AssetCatalogService:
         type_code: str | None = None,
         search: str = "",
         limit: int = 100,
+        include_equip_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """Returns equipments matching farm, type, and search filters."""
         try:
@@ -301,8 +329,7 @@ class AssetCatalogService:
                 LIMIT {limit}
             """
             rows = con.execute(query).fetchall()
-            con.close()
-            return [
+            equips = [
                 {
                     "equip_id": r[0],
                     "farm_id": r[1],
@@ -321,6 +348,38 @@ class AssetCatalogService:
                 }
                 for r in rows
             ]
+
+            # Guarantee that include_equip_id is included even if filtered or capped
+            if include_equip_id is not None and not any(e["equip_id"] == include_equip_id for e in equips):
+                specific_row = con.execute(f"""
+                    SELECT
+                        equip_id, farm_id, farm_name, farm_city, farm_state,
+                        equip_name, type_code, type_name, maker, model,
+                        nominal_pressure, radius, flow_rate, area
+                    FROM v_equipment_catalog
+                    WHERE equip_id = {include_equip_id}
+                    LIMIT 1
+                """).fetchone()
+                if specific_row:
+                    equips.insert(0, {
+                        "equip_id": specific_row[0],
+                        "farm_id": specific_row[1],
+                        "farm_name": specific_row[2],
+                        "farm_city": specific_row[3],
+                        "farm_state": specific_row[4],
+                        "equip_name": specific_row[5],
+                        "type_code": specific_row[6],
+                        "type_name": specific_row[7],
+                        "maker": specific_row[8],
+                        "model": specific_row[9],
+                        "nominal_pressure": specific_row[10],
+                        "radius": specific_row[11],
+                        "flow_rate": specific_row[12],
+                        "area": specific_row[13],
+                    })
+
+            con.close()
+            return equips
         except Exception as e:
             logger.error("error_querying_equipment", error=str(e))
             return []

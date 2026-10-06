@@ -58,17 +58,25 @@ async def test_catalog_endpoints():
         assert "farm_name" in farms[0]
         assert "farm_id" in farms[0]
 
+        # Farms with include_farm_id guarantee (farm 1515 has only 22 equips, would normally be omitted with limit=5)
+        res_farms_inc = await client.get("/api/catalog/farms?limit=5&include_farm_id=1515")
+        assert res_farms_inc.status_code == 200
+        farms_inc = res_farms_inc.json()
+        assert any(f["farm_id"] == 1515 for f in farms_inc)
+        assert any(f["farm_name"] == "VB Homestead" for f in farms_inc)
+
         # Types
         res_types = await client.get("/api/catalog/equipment-types")
         assert res_types.status_code == 200
         types = res_types.json()
         assert len(types) >= 6
 
-        # Equipment
-        res_equips = await client.get("/api/catalog/equipment?limit=10")
+        # Equipment with include_equip_id guarantee
+        res_equips = await client.get("/api/catalog/equipment?limit=5&include_equip_id=14863")
         assert res_equips.status_code == 200
         equips = res_equips.json()
         assert len(equips) > 0
+        assert any(e["equip_id"] == 14863 for e in equips)
         assert "equip_name" in equips[0]
         target_equip = equips[0]["equip_id"]
 

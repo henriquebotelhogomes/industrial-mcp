@@ -278,11 +278,12 @@ document.addEventListener("DOMContentLoaded", () => {
     updatePlaybackControls();
 
     // 0. Update Header & Active Asset Badges
-    if (!currentActiveSpec && tel.id_equip) {
+    if ((!currentActiveSpec && tel.id_equip) || (currentActiveSpec && currentActiveSpec.equip_id !== tel.id_equip)) {
       fetch(`/api/catalog/equipment/${tel.id_equip}`)
         .then(r => r.json())
         .then(sp => {
           currentActiveSpec = sp;
+          if (sp.farm_id) currentSelectedFarmId = sp.farm_id;
           syncActiveAssetUI(currentActiveSpec, tel);
         })
         .catch(() => {});
@@ -602,6 +603,33 @@ document.addEventListener("DOMContentLoaded", () => {
   function syncActiveAssetUI(spec, tel = null) {
     if (!spec) return;
 
+    // 0. Synchronize Dropdown Selectors (Aba 1) so they NEVER diverge
+    if (selectFarm && spec.farm_id) {
+      currentSelectedFarmId = parseInt(spec.farm_id);
+      let opt = Array.from(selectFarm.options).find(o => o.value === String(spec.farm_id));
+      if (!opt) {
+        opt = document.createElement("option");
+        opt.value = spec.farm_id;
+        const loc = spec.farm_city ? `${spec.farm_city}${spec.farm_state ? ", " + spec.farm_state : ""}` : "";
+        opt.textContent = `${spec.farm_name}${loc ? " - " + loc : ""}`;
+        selectFarm.prepend(opt);
+      }
+      selectFarm.value = String(spec.farm_id);
+    }
+
+    if (selectEquipment && spec.equip_id) {
+      currentActiveEquipId = parseInt(spec.equip_id);
+      let opt = Array.from(selectEquipment.options).find(o => o.value === String(spec.equip_id));
+      if (!opt) {
+        opt = document.createElement("option");
+        opt.value = spec.equip_id;
+        const type = spec.type_name || "Pivô Central";
+        opt.textContent = `[${type}] ${spec.equip_name} - ${spec.maker || ""} ${spec.model || ""}`.trim();
+        selectEquipment.prepend(opt);
+      }
+      selectEquipment.value = String(spec.equip_id);
+    }
+
     // 1. Sync SCADA Header & Active Asset Badges (Aba 1)
     if (headerFarmName) {
       const loc = spec.farm_city ? ` - ${spec.farm_city}${spec.farm_state ? ', ' + spec.farm_state : ''}` : '';
@@ -675,9 +703,14 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  async function fetchFarms(searchQuery = "") {
+  async function fetchFarms(searchQuery = "", ensureFarmId = null) {
     try {
-      const res = await fetch(`/api/catalog/farms?q=${encodeURIComponent(searchQuery)}&limit=300`);
+      const targetFarmId = ensureFarmId || currentSelectedFarmId;
+      let url = `/api/catalog/farms?q=${encodeURIComponent(searchQuery)}&limit=300`;
+      if (targetFarmId) {
+        url += `&include_farm_id=${targetFarmId}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) return;
       const farms = await res.json();
 
@@ -688,19 +721,32 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      // Check if targetFarmId is in farms. If not, and we have currentActiveSpec, prepend it.
+      if (targetFarmId && !farms.some(f => f.farm_id === targetFarmId) && currentActiveSpec && currentActiveSpec.farm_id === targetFarmId) {
+        farms.unshift({
+          farm_id: currentActiveSpec.farm_id,
+          farm_name: currentActiveSpec.farm_name,
+          farm_city: currentActiveSpec.farm_city,
+          farm_state: currentActiveSpec.farm_state,
+          total_equips: 1,
+        });
+      }
+
       farms.forEach(f => {
         const opt = document.createElement("option");
         opt.value = f.farm_id;
         const location = f.farm_city ? `${f.farm_city}${f.farm_state ? ", " + f.farm_state : ""}` : "";
         const locTxt = location ? ` - ${location}` : "";
         opt.textContent = `${f.farm_name} (${f.total_equips} equips)${locTxt}`;
-        if (f.farm_id === currentSelectedFarmId) {
+        if (f.farm_id === targetFarmId) {
           opt.selected = true;
         }
         selectFarm.appendChild(opt);
       });
 
-      if (!selectFarm.value && farms.length > 0) {
+      if (targetFarmId && farms.some(f => f.farm_id === targetFarmId)) {
+        selectFarm.value = String(targetFarmId);
+      } else if (!selectFarm.value && farms.length > 0) {
         selectFarm.value = farms[0].farm_id;
       }
       currentSelectedFarmId = parseInt(selectFarm.value);
@@ -709,16 +755,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function fetchEquipment() {
+  async function fetchEquipment(ensureEquipId = null) {
     try {
-      const farmId = selectFarm ? selectFarm.value : "";
+      const farmId = selectFarm ? selectFarm.value : (currentSelectedFarmId || "");
       const typeCode = selectEquipType ? selectEquipType.value : "all";
       const q = inputEquipSearch ? inputEquipSearch.value : "";
+      const targetEquipId = ensureEquipId || currentActiveEquipId;
 
       let url = "/api/catalog/equipment?limit=200";
       if (farmId) url += `&farm_id=${farmId}`;
       if (typeCode && typeCode !== "all") url += `&type_code=${typeCode}`;
       if (q && q.trim()) url += `&q=${encodeURIComponent(q.trim())}`;
+      if (targetEquipId) url += `&include_equip_id=${targetEquipId}`;
 
       const res = await fetch(url);
       if (!res.ok) return;
@@ -731,19 +779,26 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      // If targetEquipId is not in equips, but currentActiveSpec matches, prepend it
+      if (targetEquipId && !equips.some(e => e.equip_id === targetEquipId) && currentActiveSpec && currentActiveSpec.equip_id === targetEquipId) {
+        equips.unshift(currentActiveSpec);
+      }
+
       equips.forEach(e => {
         const opt = document.createElement("option");
         opt.value = e.equip_id;
         const radTxt = e.radius ? `${e.radius.toFixed(0)}m` : "-";
         const pressTxt = e.nominal_pressure ? `${e.nominal_pressure.toFixed(1)}bar` : "-";
-        opt.textContent = `[${e.type_name}] ${e.equip_name} - ${e.maker} ${e.model} (R: ${radTxt}, P: ${pressTxt})`;
-        if (e.equip_id === currentActiveEquipId) {
+        opt.textContent = `[${e.type_name || 'Pivô'}] ${e.equip_name} - ${e.maker || ''} ${e.model || ''} (R: ${radTxt}, P: ${pressTxt})`.trim();
+        if (e.equip_id === targetEquipId) {
           opt.selected = true;
         }
         selectEquipment.appendChild(opt);
       });
 
-      if (!selectEquipment.value && equips.length > 0) {
+      if (targetEquipId && equips.some(e => e.equip_id === targetEquipId)) {
+        selectEquipment.value = String(targetEquipId);
+      } else if (!selectEquipment.value && equips.length > 0) {
         selectEquipment.value = equips[0].equip_id;
       }
     } catch (err) {
@@ -785,27 +840,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (inputFarmSearch) {
     inputFarmSearch.addEventListener("input", debounce(async () => {
-      await fetchFarms(inputFarmSearch.value);
-      await fetchEquipment();
+      await fetchFarms(inputFarmSearch.value, currentSelectedFarmId);
+      await fetchEquipment(currentActiveEquipId);
     }, 250));
   }
 
   if (selectFarm) {
     selectFarm.addEventListener("change", async () => {
       currentSelectedFarmId = parseInt(selectFarm.value);
+      // When farm changes, fetch equipment of that farm and automatically activate the first equipment
       await fetchEquipment();
+      if (selectEquipment && selectEquipment.value) {
+        await applyEquipmentSwitch(selectEquipment.value);
+      }
     });
   }
 
   if (selectEquipType) {
     selectEquipType.addEventListener("change", async () => {
       await fetchEquipment();
+      if (selectEquipment && selectEquipment.value) {
+        await applyEquipmentSwitch(selectEquipment.value);
+      }
     });
   }
 
   if (inputEquipSearch) {
     inputEquipSearch.addEventListener("input", debounce(async () => {
-      await fetchEquipment();
+      await fetchEquipment(currentActiveEquipId);
     }, 250));
   }
 
@@ -1103,7 +1165,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     })
     .catch(err => console.warn("Erro ao obter ativo inicial:", err))
-    .finally(() => {
-      fetchFarms().then(() => fetchEquipment());
+    .finally(async () => {
+      await fetchFarms("", currentSelectedFarmId);
+      await fetchEquipment(currentActiveEquipId);
+      if (currentActiveSpec) {
+        syncActiveAssetUI(currentActiveSpec);
+      }
     });
 });

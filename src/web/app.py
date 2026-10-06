@@ -515,9 +515,13 @@ async def scalar_docs() -> HTMLResponse:
 # ---------------------------------------------------------------------------
 
 @app.get("/api/catalog/farms")
-async def list_farms(q: str = "", limit: int = 50):
+async def list_farms(
+    q: str = "",
+    limit: int = 300,
+    include_farm_id: int | None = None,
+):
     """Returns farms matching search term with equipment counts."""
-    return asset_catalog.get_farms(search=q, limit=limit)
+    return asset_catalog.get_farms(search=q, limit=limit, include_farm_id=include_farm_id)
 
 
 @app.get("/api/catalog/equipment-types")
@@ -531,7 +535,8 @@ async def list_equipment(
     farm_id: int | None = None,
     type_code: str | None = None,
     q: str = "",
-    limit: int = 50,
+    limit: int = 200,
+    include_equip_id: int | None = None,
 ):
     """Returns equipment units filtered by farm, type code, or text query."""
     return asset_catalog.get_equipment(
@@ -539,6 +544,7 @@ async def list_equipment(
         type_code=type_code,
         search=q,
         limit=limit,
+        include_equip_id=include_equip_id,
     )
 
 
