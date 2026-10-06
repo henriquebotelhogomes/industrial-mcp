@@ -7,6 +7,7 @@
 > **Status de Engenharia:** Concluído & Validado Deterministicamente (Tier 2 Enterprise)
 
 [![CI/CD Pipeline](https://github.com/henriquebotelhogomes/industrial-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/henriquebotelhogomes/industrial-mcp/actions)
+[![Live Demo Cloud Run](https://img.shields.io/badge/Google_Cloud_Run-Live_Demo-4285F4.svg?logo=googlecloud&logoColor=white)](https://industrial-mcp-789851290741.us-central1.run.app)
 [![DagsHub MLflow](https://img.shields.io/badge/MLOps-DagsHub_MLflow-00b4d8.svg)](https://dagshub.com/henriquebotelhogomes/industrial-mcp.mlflow)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
 [![FastMCP](https://img.shields.io/badge/Protocol-Model_Context_Protocol-purple.svg)](https://modelcontextprotocol.io)
@@ -26,6 +27,16 @@
 * [📊 Veredito Executivo da PoC (POC_VERDICT)](POC_VERDICT.md): Projeção FinOps de escala (10k a 1M req/mês).
 * [🚨 Postmortem de Incidentes (POSTMORTEM)](INCIDENT_POSTMORTEM.md): Runbook blameless de resposta a falhas.
 * [🛡️ Confiabilidade & SRE (SLO_SRE)](docs/SLO_SRE.md): SLIs/SLOs e política de Error Budget.
+
+---
+
+## 🌐 Demonstração ao Vivo na Nuvem (Google Cloud Run)
+A aplicação está em produção no **Google Cloud Run** com política de *Scale-to-Zero ($0/mês)* e suporte nativo a streaming:
+
+* 🖥️ **Dashboard SCADA & Telemetria Industrial:** [https://industrial-mcp-789851290741.us-central1.run.app](https://industrial-mcp-789851290741.us-central1.run.app)
+* 🤖 **Portal Oficial FastMCP (SSE Gateway):** [https://industrial-mcp-789851290741.us-central1.run.app/mcp](https://industrial-mcp-789851290741.us-central1.run.app/mcp)
+* 📖 **Documentação Interativa de APIs (Scalar):** [https://industrial-mcp-789851290741.us-central1.run.app/docs](https://industrial-mcp-789851290741.us-central1.run.app/docs)
+* 🧪 **Experiment Tracking & Model Registry (MLflow):** [https://dagshub.com/henriquebotelhogomes/industrial-mcp.mlflow](https://dagshub.com/henriquebotelhogomes/industrial-mcp.mlflow)
 
 ---
 
