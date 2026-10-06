@@ -13,7 +13,8 @@
   <!-- Highcharts Core & Polar Extension -->
   <script src="https://code.highcharts.com/highcharts.js"></script>
   <script src="https://code.highcharts.com/highcharts-more.js"></script>
-  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <!-- Marked.js for Copilot Markdown Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -78,6 +79,37 @@
     </div>
   </header>
 
+  <!-- TAB NAVIGATION: SCADA 4.0 vs COPILOTO COGNITIVO -->
+  <nav class="bg-slate-900 border-b border-slate-800 px-6 py-2 sticky top-[61px] z-30">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center space-x-2">
+        <button id="tab-btn-scada" class="flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm">
+          <i data-lucide="gauge" class="w-4 h-4"></i>
+          <span>Aba 1: Supervisório SCADA Polar</span>
+        </button>
+        <button id="tab-btn-copilot" class="flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60">
+          <i data-lucide="bot" class="w-4 h-4 text-cyan-400"></i>
+          <span>Aba 2: Copiloto Cognitivo (LangGraph)</span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">System 2</span>
+        </button>
+      </div>
+
+      <div class="hidden sm:flex items-center space-x-3 text-xs text-slate-400">
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span>RAG Relacional: <strong class="text-slate-200">DuckDB Lakehouse</strong></span>
+        </span>
+        <span>•</span>
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>Modo Híbrido Resiliente: <strong class="text-emerald-300">Ativo</strong></span>
+        </span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ==================== TAB 1 CONTENT: SCADA SUPERVISORY ==================== -->
+  <div id="tab-content-scada" class="flex flex-col flex-1">
   <!-- ASSET SELECTOR TOOLBAR (FARM, EQUIPMENT TYPE & EQUIPMENT NAME) -->
   <section class="bg-slate-900/95 border-b border-slate-800 px-6 py-3">
     <div class="max-w-7xl mx-auto">
@@ -435,6 +467,212 @@
     </div>
 
   </main>
+  </div> <!-- END tab-content-scada -->
+
+  <!-- ==================== TAB 2 CONTENT: COGNITIVE COPILOT ==================== -->
+  <div id="tab-content-copilot" class="hidden flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full gap-6">
+    
+    <!-- Top Action / Context Banner -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+          <i data-lucide="cpu" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold text-white">Copiloto Cognitivo de Engenharia de Automação</h2>
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">LangGraph StateGraph</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">MemorySaver Active</span>
+          </div>
+          <p class="text-xs text-slate-400">Laudos de Causa-Raiz, Diagnóstico Hidráulico Relacional (DuckDB) e Autorização HITL</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="btn-copilot-sync-telemetry" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span>Atualizar Telemetria</span>
+        </button>
+        <button id="btn-copilot-clear-chat" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          <span>Limpar Histórico</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Grid: 4 cols Specs/FinOps, 8 cols Chat/Laudo -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-start">
+      
+      <!-- LEFT COLUMN: Ficha Técnica (RAG Relacional) & FinOps Monitor -->
+      <div class="lg:col-span-4 space-y-6">
+        
+        <!-- Ficha Técnica de Engenharia (RAG Relacional) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3.5 shadow-xl">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="database" class="w-4 h-4 text-cyan-400"></i>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200">RAG Relacional (Catálogo)</h3>
+            </div>
+            <span class="text-[10px] text-cyan-400 font-mono">DuckDB Gold</span>
+          </div>
+
+          <div class="space-y-2 text-xs">
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Equipamento:</span>
+              <span id="copilot-spec-name" class="font-bold text-white font-mono">Haak 1 (#14863)</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Fabricante / Modelo:</span>
+              <span id="copilot-spec-maker" class="font-semibold text-slate-300">Valmont Valley 8000C</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Fazenda:</span>
+              <span id="copilot-spec-farm" class="text-slate-300">VB Homestead (Sunnyside)</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Pressão Nominal de Projeto:</span>
+              <span id="copilot-spec-nom-p" class="font-mono font-bold text-amber-400">3.40 bar</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Pressão Medida (Campo):</span>
+              <span id="copilot-spec-live-p" class="font-mono font-bold text-emerald-400">3.42 bar</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Vazão de Catálogo:</span>
+              <span id="copilot-spec-flow" class="font-mono text-slate-300">185.0 m³/h</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Raio da Torre Mestra:</span>
+              <span id="copilot-spec-radius" class="font-mono text-slate-300">380 m (45.3 ha)</span>
+            </div>
+            <div class="flex justify-between py-1">
+              <span class="text-slate-400">Lâmina de Irrigação:</span>
+              <span id="copilot-spec-depth" class="font-mono text-cyan-400">5.5 mm (Nominal)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monitor de FinOps & Latência em Tempo Real -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3.5 shadow-xl">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="dollar-sign" class="w-4 h-4 text-emerald-400"></i>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200">FinOps & Arquitetura Cascata</h3>
+            </div>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400">Tier 2 Governança</span>
+          </div>
+
+          <div class="space-y-2 text-xs">
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Camada em Execução:</span>
+              <span id="finops-tier-badge" class="font-mono text-emerald-400 font-semibold">System 1 Local (CPU)</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Custo por Leitura Nominal:</span>
+              <span class="font-mono text-white font-bold">$0.00 (Zero)</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Latência do Laudo:</span>
+              <span id="finops-latency" class="font-mono text-cyan-400 font-semibold">< 10 ms</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/60">
+              <span class="text-slate-400">Economia FinOps (vs LLM Bruta):</span>
+              <span class="font-mono text-emerald-400 font-bold">99.85% de redução</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400">
+              O System 1 filtra 100% da telemetria estável. Apenas desvios críticos e consultas do operador ativam o raciocínio profundo do System 2.
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN: Interactive Copilot Chat & Technical Dossier -->
+      <div class="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-xl min-h-[580px] h-[640px]">
+        
+        <!-- Chat Header & Shortcuts -->
+        <div class="p-4 border-b border-slate-800 bg-slate-950/40 rounded-t-2xl space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-white">Canal de Interação do Operador</h3>
+            </div>
+            <span class="text-[10px] text-slate-400">Model: Gemini 3.8 Flash / Resilient Fallback</span>
+          </div>
+
+          <!-- Shortcuts Bar -->
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button class="copilot-shortcut px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" data-query="Diagnosticar estado operacional completo do pivô central">
+              🔍 Diagnosticar Ativo
+            </button>
+            <button class="copilot-shortcut px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" data-query="Comparar pressão hidráulica medida com a pressão nominal de catálogo de fábrica">
+              💧 Pressão de Projeto vs Real
+            </button>
+            <button class="copilot-shortcut px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" data-query="Avaliar corrente elétrica e vibração na última torre de acordo com as normas de segurança">
+              ⚡ Corrente & Vibração
+            </button>
+            <button class="copilot-shortcut px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-amber-300 hover:text-white border border-amber-500/30 transition" data-query="Simular análise de queda súbita de pressão para 0.35 bar e verificar necessidade de parada de emergência">
+              🚨 Simular Laudo Crítico (HITL)
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Feed -->
+        <div id="copilot-messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+          <!-- Welcome message -->
+          <div class="flex items-start space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">
+              <i data-lucide="bot" class="w-4 h-4"></i>
+            </div>
+            <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-slate-300 max-w-2xl space-y-2">
+              <p class="font-bold text-white">Olá, Operador. Eu sou o Copiloto de IA da Planta Industrial.</p>
+              <p>Estou conectado ao <strong>Lakehouse DuckDB</strong> com acesso em tempo real às fichas de engenharia dos pivôs e à telemetria de sensores.</p>
+              <p class="text-slate-400">Você pode me solicitar laudos de engenharia, diagnóstico de divergência de pressão hidráulica ou auditorias de conformidade com a ABNT NBR ISO 11545.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- HITL In-Chat Action Bar (shown dynamically if requires_hitl == true) -->
+        <div id="copilot-hitl-banner" class="hidden mx-4 mb-2 p-3 bg-red-950/60 border border-red-500/80 rounded-xl flex items-center justify-between gap-3 text-xs">
+          <div class="flex items-center space-x-2 text-red-200">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400 flex-shrink-0"></i>
+            <div>
+              <strong class="font-bold">Intervenção Crítica Recomendada (HITL):</strong>
+              <span id="copilot-hitl-reason" class="text-red-300 block text-[11px]">Queda severa de pressão detectada.</span>
+            </div>
+          </div>
+          <button id="btn-copilot-approve-hitl" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition flex items-center space-x-1 shadow-md shadow-red-600/30 flex-shrink-0">
+            <i data-lucide="power" class="w-3.5 h-3.5"></i>
+            <span>Aprovar Desarme no CLP</span>
+          </button>
+        </div>
+
+        <!-- Chat Input Bar -->
+        <div class="p-3 border-t border-slate-800 bg-slate-950/40 rounded-b-2xl">
+          <form id="copilot-chat-form" class="flex items-center space-x-2">
+            <input
+              type="text"
+              id="copilot-chat-input"
+              placeholder="Digite sua dúvida de engenharia ou selecione um atalho acima..."
+              class="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+              autocomplete="off"
+            />
+            <button
+              type="submit"
+              id="btn-copilot-send"
+              class="bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-1 shadow-md shadow-cyan-950"
+            >
+              <span>Enviar</span>
+              <i data-lucide="send" class="w-3.5 h-3.5"></i>
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div> <!-- END tab-content-copilot -->
 
   <!-- PAINEL LATERAL DE ALERTAS & HITL (DRAWER NÃO-INTRUSIVO) -->
   <aside id="drawer-alerts" class="fixed top-0 right-0 h-full w-[420px] max-w-[92vw] bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">

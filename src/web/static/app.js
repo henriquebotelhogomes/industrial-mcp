@@ -729,7 +729,274 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 2-TAB NAVIGATION (SCADA vs COPILOTO)
+  // ---------------------------------------------------------------------------
+  const tabBtnScada = document.getElementById("tab-btn-scada");
+  const tabBtnCopilot = document.getElementById("tab-btn-copilot");
+  const tabContentScada = document.getElementById("tab-content-scada");
+  const tabContentCopilot = document.getElementById("tab-content-copilot");
+
+  function switchTab(target) {
+    if (target === "scada") {
+      if (tabContentScada) tabContentScada.classList.remove("hidden");
+      if (tabContentCopilot) tabContentCopilot.classList.add("hidden");
+      if (tabBtnScada) tabBtnScada.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm";
+      if (tabBtnCopilot) tabBtnCopilot.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60";
+      setTimeout(() => {
+        if (polarChart) polarChart.reflow();
+        if (timeSeriesChart) timeSeriesChart.reflow();
+      }, 50);
+    } else {
+      if (tabContentScada) tabContentScada.classList.add("hidden");
+      if (tabContentCopilot) tabContentCopilot.classList.remove("hidden");
+      if (tabBtnCopilot) tabBtnCopilot.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm";
+      if (tabBtnScada) tabBtnScada.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60";
+      updateCopilotCards();
+    }
+  }
+
+  if (tabBtnScada) tabBtnScada.addEventListener("click", () => switchTab("scada"));
+  if (tabBtnCopilot) tabBtnCopilot.addEventListener("click", () => switchTab("copilot"));
+
+  // ---------------------------------------------------------------------------
+  // COPILOTO COGNITIVO (LANGGRAPH + RELATIONAL RAG)
+  // ---------------------------------------------------------------------------
+  let copilotSessionId = "session_" + Math.random().toString(36).substring(2, 9);
+  let pendingCopilotHitlAction = null;
+
+  const copilotChatForm = document.getElementById("copilot-chat-form");
+  const copilotChatInput = document.getElementById("copilot-chat-input");
+  const copilotMessagesContainer = document.getElementById("copilot-messages-container");
+  const copilotHitlBanner = document.getElementById("copilot-hitl-banner");
+  const copilotHitlReason = document.getElementById("copilot-hitl-reason");
+  const btnCopilotApproveHitl = document.getElementById("btn-copilot-approve-hitl");
+  const btnCopilotSyncTelemetry = document.getElementById("btn-copilot-sync-telemetry");
+  const btnCopilotClearChat = document.getElementById("btn-copilot-clear-chat");
+
+  const copilotSpecName = document.getElementById("copilot-spec-name");
+  const copilotSpecMaker = document.getElementById("copilot-spec-maker");
+  const copilotSpecFarm = document.getElementById("copilot-spec-farm");
+  const copilotSpecNomP = document.getElementById("copilot-spec-nom-p");
+  const copilotSpecLiveP = document.getElementById("copilot-spec-live-p");
+  const copilotSpecFlow = document.getElementById("copilot-spec-flow");
+  const copilotSpecRadius = document.getElementById("copilot-spec-radius");
+  const copilotSpecDepth = document.getElementById("copilot-spec-depth");
+  const finopsTierBadge = document.getElementById("finops-tier-badge");
+  const finopsLatency = document.getElementById("finops-latency");
+
+  function appendCopilotMessage(sender, htmlContent, isUser = false) {
+    if (!copilotMessagesContainer) return;
+    const msgDiv = document.createElement("div");
+    msgDiv.className = isUser ? "flex items-start justify-end space-x-3" : "flex items-start space-x-3";
+
+    if (isUser) {
+      msgDiv.innerHTML = `
+        <div class="bg-slate-800 text-slate-100 border border-slate-700/80 rounded-2xl px-4 py-2.5 max-w-xl shadow-md">
+          <p class="font-medium text-xs">${htmlContent}</p>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0 mt-0.5">
+          <i data-lucide="user" class="w-4 h-4"></i>
+        </div>
+      `;
+    } else {
+      msgDiv.innerHTML = `
+        <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">
+          <i data-lucide="bot" class="w-4 h-4"></i>
+        </div>
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-slate-300 max-w-2xl space-y-2 shadow-md leading-relaxed">
+          ${htmlContent}
+        </div>
+      `;
+    }
+
+    copilotMessagesContainer.appendChild(msgDiv);
+    copilotMessagesContainer.scrollTop = copilotMessagesContainer.scrollHeight;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function appendTypingIndicator() {
+    const typingId = "typing-" + Date.now();
+    const div = document.createElement("div");
+    div.id = typingId;
+    div.className = "flex items-start space-x-3";
+    div.innerHTML = `
+      <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">
+        <i data-lucide="cpu" class="w-4 h-4 animate-spin"></i>
+      </div>
+      <div class="bg-slate-950/80 border border-slate-800 rounded-2xl px-4 py-3 text-slate-400 max-w-xs flex items-center space-x-2">
+        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+        <span class="text-xs">Consultando DuckDB & Executando StateGraph...</span>
+      </div>
+    `;
+    copilotMessagesContainer.appendChild(div);
+    copilotMessagesContainer.scrollTop = copilotMessagesContainer.scrollHeight;
+    if (window.lucide) window.lucide.createIcons();
+    return typingId;
+  }
+
+  async function sendCopilotQuery(queryText) {
+    if (!queryText || !queryText.trim()) return;
+    const cleanQuery = queryText.trim();
+    if (copilotChatInput) copilotChatInput.value = "";
+
+    appendCopilotMessage("Operador", cleanQuery, true);
+    const typingId = appendTypingIndicator();
+
+    try {
+      const res = await fetch("/api/copilot/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: cleanQuery,
+          equip_id: currentActiveEquipId || 14863,
+          session_id: copilotSessionId,
+        })
+      });
+
+      const typingEl = document.getElementById(typingId);
+      if (typingEl) typingEl.remove();
+
+      if (res.ok) {
+        const data = await res.json();
+        const mdText = data.response_markdown || "Sem resposta.";
+        const renderedHtml = window.marked ? window.marked.parse(mdText) : `<pre class="whitespace-pre-wrap">${mdText}</pre>`;
+        appendCopilotMessage("Copiloto", renderedHtml, false);
+
+        if (data.catalog_spec) {
+          const s = data.catalog_spec;
+          if (copilotSpecName) copilotSpecName.textContent = `${s.equip_name || 'Haak 1'} (#${s.equip_id || 14863})`;
+          if (copilotSpecMaker) copilotSpecMaker.textContent = `${s.maker || 'Valmont'} ${s.model || 'Valley 8000C'}`;
+          if (copilotSpecFarm) copilotSpecFarm.textContent = `${s.farm_name || 'VB Homestead'} (${s.farm_city || 'Sunnyside'})`;
+          if (copilotSpecNomP) copilotSpecNomP.textContent = `${(s.nominal_pressure || 3.4).toFixed(2)} bar`;
+          if (copilotSpecFlow) copilotSpecFlow.textContent = `${(s.flow_rate || 185.0).toFixed(1)} m³/h`;
+          if (copilotSpecRadius) copilotSpecRadius.textContent = `${(s.radius || 380.0).toFixed(0)} m (${(s.area || 45.0).toFixed(1)} ha)`;
+        }
+
+        if (data.telemetry_live && copilotSpecLiveP) {
+          copilotSpecLiveP.textContent = `${(data.telemetry_live.pressao_bar || 0).toFixed(2)} bar`;
+        }
+
+        if (data.deficit_metrics && copilotSpecDepth) {
+          copilotSpecDepth.textContent = `${data.deficit_metrics.actual_depth_mm} mm (Nominal: ${data.deficit_metrics.nominal_depth_mm} mm)`;
+        }
+
+        if (data.finops) {
+          if (finopsTierBadge) finopsTierBadge.textContent = data.finops.tier_used || "System 1 Hybrid Fallback";
+          if (finopsLatency) finopsLatency.textContent = `${data.finops.latency_ms || 12} ms`;
+        }
+
+        if (data.requires_hitl && data.hitl_action) {
+          pendingCopilotHitlAction = data.hitl_action;
+          if (copilotHitlBanner) copilotHitlBanner.classList.remove("hidden");
+          if (copilotHitlReason) copilotHitlReason.textContent = data.hitl_action.reason || "Queda severa de pressão detectada.";
+          addMcpLog(`[COPILOT HITL ALERTA] Ação de segurança pendente para #${data.equip_id}`);
+        } else {
+          if (copilotHitlBanner) copilotHitlBanner.classList.add("hidden");
+          pendingCopilotHitlAction = null;
+        }
+
+      } else {
+        appendCopilotMessage("Sistema", `<span class="text-red-400 font-bold">Erro HTTP ${res.status} ao consultar o copiloto.</span>`, false);
+      }
+    } catch (err) {
+      console.error("Erro na consulta do copiloto:", err);
+      const typingEl = document.getElementById(typingId);
+      if (typingEl) typingEl.remove();
+      appendCopilotMessage("Sistema", `<span class="text-red-400 font-bold">Falha de conexão: ${err.message}</span>`, false);
+    }
+  }
+
+  function updateCopilotCards() {
+    if (kpiPressure && copilotSpecLiveP) {
+      copilotSpecLiveP.textContent = kpiPressure.textContent + " bar";
+    }
+    if (badgeActiveEquip && copilotSpecName) {
+      copilotSpecName.textContent = badgeActiveEquip.textContent;
+    }
+    if (badgeActiveMaker && copilotSpecMaker) {
+      copilotSpecMaker.textContent = badgeActiveMaker.textContent;
+    }
+    if (badgeActivePressure && copilotSpecNomP) {
+      copilotSpecNomP.textContent = badgeActivePressure.textContent;
+    }
+    if (badgeActiveRadius && copilotSpecRadius) {
+      copilotSpecRadius.textContent = badgeActiveRadius.textContent;
+    }
+  }
+
+  if (copilotChatForm) {
+    copilotChatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (copilotChatInput) sendCopilotQuery(copilotChatInput.value);
+    });
+  }
+
+  document.querySelectorAll(".copilot-shortcut").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const q = btn.getAttribute("data-query");
+      if (q) sendCopilotQuery(q);
+    });
+  });
+
+  if (btnCopilotApproveHitl) {
+    btnCopilotApproveHitl.addEventListener("click", async () => {
+      try {
+        const res = await fetch("/api/copilot/hitl/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticket_id: "HITL-COPILOT-" + Date.now(),
+            operator_name: "Operador_Henrique",
+          })
+        });
+        if (res.ok) {
+          appendCopilotMessage("Sistema", `
+            <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-red-300">
+              <strong class="font-bold flex items-center gap-1.5"><i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i> Ordem de Parada Emergencial Aprovada!</strong>
+              <p class="text-xs mt-1 text-slate-300">O comando de desarme e despressurização foi transmitido via FastMCP tool ao CLP com registro de auditoria.</p>
+            </div>
+          `, false);
+          if (copilotHitlBanner) copilotHitlBanner.classList.add("hidden");
+          addMcpLog("[HITL APROVADO VIA COPILOTO] Desarme do CLP executado pelo operador.");
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: "approve_hitl", ticket_id: "TICKET-AUTO" }));
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao aprovar HITL do copiloto:", err);
+      }
+    });
+  }
+
+  if (btnCopilotSyncTelemetry) {
+    btnCopilotSyncTelemetry.addEventListener("click", () => {
+      updateCopilotCards();
+      addMcpLog("[COPILOTO] Ficha técnica e telemetria sincronizadas.");
+    });
+  }
+
+  if (btnCopilotClearChat) {
+    btnCopilotClearChat.addEventListener("click", () => {
+      if (copilotMessagesContainer) {
+        copilotMessagesContainer.innerHTML = `
+          <div class="flex items-start space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">
+              <i data-lucide="bot" class="w-4 h-4"></i>
+            </div>
+            <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-slate-300 max-w-2xl space-y-2">
+              <p class="font-bold text-white">Histórico reiniciado. Como posso auxiliar na operação industrial?</p>
+              <p class="text-slate-400">Pronto para novas análises em tempo real ou consultas via RAG Relacional.</p>
+            </div>
+          </div>
+        `;
+        if (window.lucide) window.lucide.createIcons();
+      }
+    });
+  }
+
   // Initial boots
+
   initHighcharts();
   connectWebSocket();
   fetchFarms().then(() => fetchEquipment());

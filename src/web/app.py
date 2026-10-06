@@ -286,6 +286,70 @@ async def call_mcp_tool(req: McpToolCallRequest):
 
 
 # ---------------------------------------------------------------------------
+# LangGraph Cognitive Copilot & Relational RAG Endpoints
+# ---------------------------------------------------------------------------
+
+class CopilotChatRequest(BaseModel):
+    query: str = Field(description="Pergunta do operador ou comando técnico")
+    equip_id: int | None = Field(default=14863, description="Identificador do equipamento no catálogo")
+    session_id: str | None = Field(default=None, description="Identificador da sessão para memória multi-turno")
+
+
+@app.post("/api/copilot/chat")
+async def copilot_chat(req: CopilotChatRequest):
+    """Executes LangGraph StateGraph Copilot with Relational RAG and HITL check."""
+    from src.agent.graph import copilot_graph
+
+    session_id = req.session_id or f"sess_{uuid.uuid4().hex[:8]}"
+    equip_id = req.equip_id or 14863
+
+    config = {"configurable": {"thread_id": session_id}}
+    state_input = {
+        "user_query": req.query,
+        "equip_id": equip_id,
+        "session_id": session_id,
+    }
+
+    try:
+        result = await copilot_graph.ainvoke(state_input, config)
+        return {
+            "session_id": session_id,
+            "equip_id": equip_id,
+            "response_markdown": result.get("final_markdown", ""),
+            "catalog_spec": result.get("catalog_spec"),
+            "telemetry_live": result.get("telemetry_live"),
+            "deficit_metrics": result.get("deficit_metrics"),
+            "requires_hitl": result.get("requires_hitl", False),
+            "hitl_action": result.get("hitl_action"),
+            "finops": result.get("finops_stats", {}),
+        }
+    except Exception as e:
+        logger.error("copilot_execution_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Erro ao executar Copiloto: {str(e)}") from e
+
+
+@app.post("/api/copilot/hitl/approve")
+async def copilot_hitl_approve(req: HitlDecisionRequest):
+    """Directly triggers critical actuation with HITL operator confirmation via FastMCP tool."""
+    from src.mcp.tools import request_emergency_stop
+
+    pivot_id = state_manager.current_event.id_equip if state_manager.current_event else 14863
+    res_str = await request_emergency_stop(
+        pivot_id=pivot_id,
+        reason=f"Autorizado pelo Operador via Copilot HITL ({req.operator_name})",
+        operator_confirmed=True,
+    )
+    if state_manager.pending_hitl_ticket:
+        await state_manager.approve_hitl_action(req.ticket_id)
+
+    return {
+        "status": "APPROVED_AND_EXECUTED",
+        "mcp_result": res_str,
+        "operator": req.operator_name,
+    }
+
+
+# ---------------------------------------------------------------------------
 # WebSocket Endpoint: Real-time Reactive Streaming
 # ---------------------------------------------------------------------------
 
