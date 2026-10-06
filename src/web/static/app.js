@@ -899,8 +899,28 @@ document.addEventListener("DOMContentLoaded", () => {
     if (target === "scada") {
       if (tabContentScada) tabContentScada.classList.remove("hidden");
       if (tabContentCopilot) tabContentCopilot.classList.add("hidden");
-      if (tabBtnScada) tabBtnScada.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm";
-      if (tabBtnCopilot) tabBtnCopilot.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60";
+      if (tabBtnScada) {
+        tabBtnScada.className = "flex items-center space-x-2.5 px-5 py-3 border-b-2 border-emerald-400 font-bold text-xs text-white bg-slate-800/70 rounded-t-xl transition shadow-sm -mb-px";
+        tabBtnScada.innerHTML = `
+          <i data-lucide="gauge" class="w-4 h-4 text-emerald-400"></i>
+          <span>Aba 1: Supervisório SCADA Polar</span>
+          <span class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            ATIVA
+          </span>
+        `;
+      }
+      if (tabBtnCopilot) {
+        tabBtnCopilot.className = "flex items-center space-x-2.5 px-5 py-3 border-b-2 border-transparent font-medium text-xs text-slate-400 hover:text-slate-200 hover:border-slate-700 hover:bg-slate-800/30 rounded-t-xl transition -mb-px";
+        tabBtnCopilot.innerHTML = `
+          <i data-lucide="bot" class="w-4 h-4 text-slate-400"></i>
+          <span>Aba 2: Copiloto Cognitivo (LangGraph)</span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+            System 2
+          </span>
+        `;
+      }
+      if (window.lucide) window.lucide.createIcons();
       setTimeout(() => {
         if (polarChart) polarChart.reflow();
         if (timeSeriesChart) timeSeriesChart.reflow();
@@ -908,8 +928,28 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       if (tabContentScada) tabContentScada.classList.add("hidden");
       if (tabContentCopilot) tabContentCopilot.classList.remove("hidden");
-      if (tabBtnCopilot) tabBtnCopilot.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm";
-      if (tabBtnScada) tabBtnScada.className = "flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60";
+      if (tabBtnCopilot) {
+        tabBtnCopilot.className = "flex items-center space-x-2.5 px-5 py-3 border-b-2 border-cyan-400 font-bold text-xs text-white bg-slate-800/70 rounded-t-xl transition shadow-sm -mb-px";
+        tabBtnCopilot.innerHTML = `
+          <i data-lucide="bot" class="w-4 h-4 text-cyan-400"></i>
+          <span>Aba 2: Copiloto Cognitivo (LangGraph)</span>
+          <span class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+            ATIVA
+          </span>
+        `;
+      }
+      if (tabBtnScada) {
+        tabBtnScada.className = "flex items-center space-x-2.5 px-5 py-3 border-b-2 border-transparent font-medium text-xs text-slate-400 hover:text-slate-200 hover:border-slate-700 hover:bg-slate-800/30 rounded-t-xl transition -mb-px";
+        tabBtnScada.innerHTML = `
+          <i data-lucide="gauge" class="w-4 h-4 text-slate-400"></i>
+          <span>Aba 1: Supervisório SCADA Polar</span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+            Aba 1
+          </span>
+        `;
+      }
+      if (window.lucide) window.lucide.createIcons();
       updateCopilotCards();
     }
   }
