@@ -3,6 +3,13 @@
 import os
 import sys
 
+# Ensure Windows PowerShell stdout/stderr can print MLflow Unicode emojis without crashing
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
 import mlflow
 import mlflow.sklearn
 
@@ -13,25 +20,21 @@ from src.ml.anomaly_detector import OperationalAnomalyDetector
 
 def setup_mlflow_tracking() -> bool:
     """Configures MLflow tracking URI, either locally or integrated with DagsHub."""
-    # 1. Option A: DagsHub automatic integration
+    # 1. Option A: DagsHub direct MLflow configuration (robust against Windows console charmap issues)
     if settings.dagshub_repo_owner and settings.dagshub_repo_name:
-        try:
-            import dagshub
+        owner = settings.dagshub_repo_owner
+        repo = settings.dagshub_repo_name
+        token = settings.dagshub_token or os.environ.get("DAGSHUB_USER_TOKEN")
 
-            if settings.dagshub_token:
-                os.environ["DAGSHUB_USER_TOKEN"] = settings.dagshub_token
-            dagshub.init(
-                repo_owner=settings.dagshub_repo_owner,
-                repo_name=settings.dagshub_repo_name,
-                mlflow=True,
-            )
-            logger.info(
-                "dagshub_mlflow_initialized",
-                repo=f"{settings.dagshub_repo_owner}/{settings.dagshub_repo_name}",
-            )
-            return True
-        except Exception as e:
-            logger.warn("dagshub_init_failed_falling_back", error=str(e))
+        if token:
+            os.environ["MLFLOW_TRACKING_USERNAME"] = owner
+            os.environ["MLFLOW_TRACKING_PASSWORD"] = token
+            os.environ["DAGSHUB_USER_TOKEN"] = token
+
+        dagshub_mlflow_uri = f"https://dagshub.com/{owner}/{repo}.mlflow"
+        mlflow.set_tracking_uri(dagshub_mlflow_uri)
+        logger.info("dagshub_mlflow_configured", uri=dagshub_mlflow_uri)
+        return True
 
     # 2. Option B: Explicit MLflow tracking URI (remote server or local directory)
     if settings.mlflow_tracking_uri:
