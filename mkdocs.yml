@@ -1,0 +1,51 @@
+site_name: "Industrial-MCP | Telemetria & Copiloto Industrial"
+site_description: "Portal Oficial de Engenharia, Automação (PLC/SCADA), FastMCP e MLOps"
+site_author: "Especialista II - Automação e IA"
+repo_name: "industrial-mcp"
+
+theme:
+  name: material
+  language: pt-BR
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Mudar para modo claro
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Mudar para modo escuro
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - Início: index.md
+  - Requisitos de Produto (PRD): prd.md
+  - Especificação Técnica (Spec): spec.md
+  - Catálogo MCP & Agentes: agents_mcp.md
+  - MLOps & Detecção de Anomalias: mlops.md
+  - Confiabilidade & SRE: SLO_SRE.md
+  - Postmortem de Incidentes: postmortem.md
+  - Veredito da PoC & FinOps: poc_verdict.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables

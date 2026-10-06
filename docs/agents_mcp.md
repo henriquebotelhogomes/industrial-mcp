@@ -1,12 +1,8 @@
-# Instruções do Projeto
-
-Leia e siga estritamente o arquivo `GEMINI.md` deste diretório antes de codar. Ele é a fonte normativa canônica (Harness Antigravity).
-
----
-
 # 🤖 Catálogo de IA, Model Context Protocol (MCP) & Ferramentas Operacionais
 
 Este documento funciona como o contrato canônico de consumo para agentes de IA (Antigravity, Cursor, Claude Code, agentes autônomos) integrados ao ecossistema do **Industrial-MCP**.
+
+---
 
 ## 1. Transporte & Conexão do Servidor MCP
 * **Interface:** FastMCP (Protocolo Oficial Model Context Protocol)

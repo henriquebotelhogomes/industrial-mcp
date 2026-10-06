@@ -2,7 +2,7 @@
 name = "industrial-mcp"
 version = "0.1.0"
 description = "Industrial PLC/SCADA Telemetry Copilot & Watchdog with FastMCP, MLOps, and Real-Time Streaming"
-readme = "ARCHITECTURE.md"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
@@ -52,3 +52,8 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = true
+
+[dependency-groups]
+dev = [
+    "mkdocs-material>=9.7.7",
+]

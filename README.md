@@ -4,7 +4,26 @@
 > **Candidatura:** Especialista II - Automação e IA (TODOS Empreendimentos / Cartão de TODOS)  
 > **Autor:** Henrique  
 > **Data:** 05/10/2026  
-> **Status de Engenharia:** Concluído & Validado Deterministicamente (Tier 2)
+> **Status de Engenharia:** Concluído & Validado Deterministicamente (Tier 2 Enterprise)
+
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
+[![FastMCP](https://img.shields.io/badge/Protocol-Model_Context_Protocol-purple.svg)](https://modelcontextprotocol.io)
+[![DuckDB](https://img.shields.io/badge/OLAP-DuckDB_1.1-yellow.svg)](https://duckdb.org)
+[![Highcharts](https://img.shields.io/badge/UI-Highcharts_Polar-green.svg)](https://highcharts.com)
+[![Ruff](https://img.shields.io/badge/Linter-Ruff_0_errors-black.svg)](https://astral.sh/ruff)
+[![Tests](https://img.shields.io/badge/Tests-22_Passed-brightgreen.svg)](tests/)
+
+---
+
+### 📚 Suíte de Governança Documental & DX (Harness v1.5.2)
+* [📄 Requisitos de Produto (PRD)](PRD.md): Personas, regras operacionais e metas de redução de falhas.
+* [🛠️ Especificação Técnica (Spec)](PROJECT_SPEC.md): Diagrama C4, ADRs arquiteturais e contratos Pydantic v2.
+* [📋 Backlog de Engenharia (TASKS)](TASKS.md): Fases de entrega e checkboxes de implementação.
+* [🚀 Handover & Continuidade (NEXT_STEPS)](NEXT_STEPS.md): Snapshot de qualidade e próximos passos.
+* [🤖 Catálogo MCP & Agentes (AGENTS)](AGENTS.md): Resources, Tools e diretrizes para LLMs.
+* [📊 Veredito Executivo da PoC (POC_VERDICT)](POC_VERDICT.md): Projeção FinOps de escala (10k a 1M req/mês).
+* [🚨 Postmortem de Incidentes (POSTMORTEM)](INCIDENT_POSTMORTEM.md): Runbook blameless de resposta a falhas.
+* [🛡️ Confiabilidade & SRE (SLO_SRE)](docs/SLO_SRE.md): SLIs/SLOs e política de Error Budget.
 
 ---
 
@@ -79,16 +98,29 @@ flowchart TD
 
 ---
 
-## 4. Como Executar o Projeto (Comando Único)
+## 4. Como Executar o Projeto (Automação de DX com Makefile)
 
-Graças ao gerenciador **`uv`**, todo o ambiente, dependências e servidores rodam com um único comando, sem atrito:
+Graças ao gerenciador **`uv`** e ao **`Makefile`** padronizado na raiz, todo o ciclo de vida do projeto é executado com comandos determinísticos:
 
 ```bash
-uv run python main.py
+# 1. Instalar dependências e ambiente virtual
+make install   # ou: uv sync --all-extras
+
+# 2. Executar testes e checagem estática de tipos
+make lint      # ruff check . + mypy src
+make test      # pytest -v
+
+# 3. Iniciar o servidor FastAPI + SCADA + FastMCP
+make run       # ou: uv run uvicorn src.web.app:app --host 0.0.0.0 --port 8000 --reload
+
+# 4. Iniciar portal de documentação MkDocs Material
+make docs      # ou: uv run mkdocs serve
 ```
 
 - **Painel SCADA Operacional:** Acesse `http://127.0.0.1:8000`
 - **Documentação Interativa da API (Scalar):** Acesse `http://127.0.0.1:8000/docs`
+- **Servidor FastMCP (SSE):** Endpoint em `http://127.0.0.1:8000/mcp`
+- **Portal de Manuais & Especificações:** `http://127.0.0.1:8000` (via `make docs`)
 
 ---
 

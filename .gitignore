@@ -40,3 +40,6 @@ data/parquet/
 # Large Raw Dumps (local storage)
 apis_raw_data.sql
 OLD_DB/
+
+# Documentation builds
+site/
