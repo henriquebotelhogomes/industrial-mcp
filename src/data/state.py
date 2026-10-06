@@ -35,24 +35,30 @@ class TelemetryStateManager:
         target_id = equip_id or 14863
         farm_id = 1515
         farm_name = "VB Homestead"
+        farm_city = "Sunnyside"
+        farm_state = "WA"
         pivot_name = "Haak 1"
         maker = "Valmont"
         model = "Valley 8000C"
         nom_pressure = 3.4
         radius = 380.0
         flow = 185.0
+        area = 45.0
 
         try:
             catalog_spec = asset_catalog.get_equipment_by_id(target_id)
             if catalog_spec:
                 farm_id = catalog_spec.get("farm_id", farm_id)
                 farm_name = catalog_spec.get("farm_name", farm_name)
+                farm_city = catalog_spec.get("farm_city", farm_city)
+                farm_state = catalog_spec.get("farm_state", farm_state)
                 pivot_name = catalog_spec.get("equip_name", pivot_name)
                 maker = catalog_spec.get("maker", maker)
                 model = catalog_spec.get("model", model)
                 nom_pressure = float(catalog_spec.get("nominal_pressure") or nom_pressure)
                 radius = float(catalog_spec.get("radius") or radius)
                 flow = float(catalog_spec.get("flow_rate") or flow)
+                area = float(catalog_spec.get("area") or area)
             else:
                 con = duckdb.connect(str(settings.duckdb_path), read_only=True)
                 specs = con.execute(f"""
@@ -82,11 +88,14 @@ class TelemetryStateManager:
                 "id_farm": farm_id,
                 "id_equip": target_id,
                 "farm_name": farm_name,
+                "farm_city": farm_city,
+                "farm_state": farm_state,
                 "pivot_name": pivot_name,
                 "pivot_maker": maker,
                 "pivot_model": model,
                 "nominal_pressure": nom_pressure,
                 "pivot_radius": radius,
+                "area": area,
                 "timestamp": datetime.now().isoformat(),
                 "current_angle": round(angle, 1),
                 "direction": "Forward",
@@ -140,7 +149,11 @@ class TelemetryStateManager:
                 id_farm=int(raw_item.get("id_farm") or 1515),
                 id_equip=int(raw_item.get("id_equip") or 14863),
                 farm_name=raw_item.get("farm_name") or "VB Homestead",
+                farm_city=raw_item.get("farm_city") or "Sunnyside",
+                farm_state=raw_item.get("farm_state") or "WA",
                 pivot_name=raw_item.get("pivot_name") or "Haak 1",
+                pivot_maker=raw_item.get("pivot_maker") or "Valmont",
+                pivot_model=raw_item.get("pivot_model") or "Valley 8000C",
                 timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 current_angle=float(raw_item.get("current_angle") or 0.0),
                 direction=str(raw_item.get("direction") or "Forward"),
@@ -152,6 +165,7 @@ class TelemetryStateManager:
                 flow_rate=float(raw_item.get("flow_rate") or 180.0),
                 nominal_pressure=float(raw_item.get("nominal_pressure") or 3.4),
                 pivot_radius=float(raw_item.get("pivot_radius") or 380.0),
+                area=float(raw_item.get("area") or 45.0),
             )
 
             # Evaluate with hybrid ML (Isolation Forest) and domain physics rules
@@ -259,10 +273,12 @@ class TelemetryStateManager:
 
         # Advance one tick to populate current_event and broadcast to WebSockets
         payload = await self.advance_tick()
+        catalog_spec = asset_catalog.get_equipment_by_id(equip_id)
         logger.info("equipment_switched_successfully", equip_id=equip_id)
         return {
             "status": "SUCCESS",
             "equip_id": equip_id,
+            "catalog_spec": catalog_spec,
             "telemetry": payload.get("telemetry"),
             "anomaly": payload.get("anomaly"),
         }

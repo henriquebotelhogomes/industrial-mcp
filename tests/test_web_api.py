@@ -79,3 +79,49 @@ async def test_catalog_endpoints():
         assert data["status"] == "SUCCESS"
         assert data["equip_id"] == target_equip
         assert data["telemetry"]["id_equip"] == target_equip
+        assert "catalog_spec" in data
+        assert data["catalog_spec"]["equip_id"] == target_equip
+
+
+@pytest.mark.asyncio
+async def test_cross_tab_equipment_synchronization():
+    """Verifies that switching equipment updates telemetry, catalog spec, and copilot consistency."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Switch to equip 19566 (ARES.01 - 2020 on ÁguaSanta.Perdizes.MG)
+        res = await client.post("/api/control/select-equipment", json={"equip_id": 19566})
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload["status"] == "SUCCESS"
+        assert payload["equip_id"] == 19566
+
+        spec = payload["catalog_spec"]
+        assert spec is not None
+        assert spec["equip_id"] == 19566
+        assert "Perdizes" in spec["farm_name"]
+        assert spec["maker"] == "AsBrasil"
+        assert spec["model"] == "Valmatic"
+
+        # Check telemetry event consistency
+        tel = payload["telemetry"]
+        assert tel["id_equip"] == 19566
+        assert tel["pivot_maker"] == "AsBrasil"
+        assert tel["pivot_model"] == "Valmatic"
+        assert "Perdizes" in tel["farm_name"]
+
+        # Check API status
+        st_res = await client.get("/api/status")
+        assert st_res.status_code == 200
+        current_tel = st_res.json()["current_telemetry"]
+        assert current_tel["id_equip"] == 19566
+        assert current_tel["pivot_maker"] == "AsBrasil"
+
+        # Check Copilot chat retrieves same catalog spec
+        chat_res = await client.post(
+            "/api/copilot/chat",
+            json={"query": "Qual o fabricante e modelo deste pivô?", "equip_id": 19566},
+        )
+        assert chat_res.status_code == 200
+        chat_data = chat_res.json()
+        assert chat_data["catalog_spec"]["maker"] == "AsBrasil"
+        assert chat_data["catalog_spec"]["model"] == "Valmatic"
+        assert "Perdizes" in chat_data["catalog_spec"]["farm_name"]

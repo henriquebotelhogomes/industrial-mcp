@@ -278,25 +278,42 @@ document.addEventListener("DOMContentLoaded", () => {
     updatePlaybackControls();
 
     // 0. Update Header & Active Asset Badges
+    if (!currentActiveSpec && tel.id_equip) {
+      fetch(`/api/catalog/equipment/${tel.id_equip}`)
+        .then(r => r.json())
+        .then(sp => {
+          currentActiveSpec = sp;
+          syncActiveAssetUI(currentActiveSpec, tel);
+        })
+        .catch(() => {});
+    }
+
     if (headerFarmName && tel.farm_name) {
-      headerFarmName.textContent = `Fazenda ${tel.farm_name}`;
+      const loc = tel.farm_city ? ` - ${tel.farm_city}${tel.farm_state ? ', ' + tel.farm_state : ''}` : '';
+      headerFarmName.textContent = `Fazenda ${tel.farm_name}${loc}`;
     }
     if (headerPivotName && tel.pivot_name) {
-      const maker = tel.pivot_maker || "Valmont";
-      const model = tel.pivot_model || "";
+      const maker = tel.pivot_maker || (currentActiveSpec ? currentActiveSpec.maker : "Valmont");
+      const model = tel.pivot_model || (currentActiveSpec ? currentActiveSpec.model : "");
       headerPivotName.textContent = `${tel.pivot_name} (${maker} ${model})`.trim();
     }
     if (badgeActiveEquip && tel.pivot_name) {
       badgeActiveEquip.textContent = `${tel.pivot_name} (#${tel.id_equip})`;
     }
     if (badgeActiveMaker) {
-      badgeActiveMaker.textContent = `${tel.pivot_maker || "Valmont"} ${tel.pivot_model || ""}`.trim();
+      const maker = tel.pivot_maker || (currentActiveSpec ? currentActiveSpec.maker : "Valmont");
+      const model = tel.pivot_model || (currentActiveSpec ? currentActiveSpec.model : "");
+      badgeActiveMaker.textContent = `${maker} ${model}`.trim();
     }
     if (badgeActiveRadius && tel.pivot_radius) {
       badgeActiveRadius.textContent = `${tel.pivot_radius.toFixed(0)} m`;
     }
     if (badgeActivePressure && tel.nominal_pressure) {
       badgeActivePressure.textContent = `${tel.nominal_pressure.toFixed(2)} bar`;
+    }
+
+    if (copilotSpecLiveP && tel.pressure_begin !== undefined) {
+      copilotSpecLiveP.textContent = `${tel.pressure_begin.toFixed(2)} bar`;
     }
 
     // 1. Update KPI Values
@@ -578,8 +595,77 @@ document.addEventListener("DOMContentLoaded", () => {
   // 6. Dynamic Asset Catalog & Equipment Switching
   // -------------------------------------------------------------------------
 
-  let currentSelectedFarmId = 1515; // VB Homestead default
-  let currentActiveEquipId = 14863;  // Haak 1 default
+  let currentSelectedFarmId = 1515; // default
+  let currentActiveEquipId = 14863;  // default
+  let currentActiveSpec = null;
+
+  function syncActiveAssetUI(spec, tel = null) {
+    if (!spec) return;
+
+    // 1. Sync SCADA Header & Active Asset Badges (Aba 1)
+    if (headerFarmName) {
+      const loc = spec.farm_city ? ` - ${spec.farm_city}${spec.farm_state ? ', ' + spec.farm_state : ''}` : '';
+      headerFarmName.textContent = `Fazenda ${spec.farm_name}${loc}`;
+    }
+    if (headerPivotName) {
+      headerPivotName.textContent = `${spec.equip_name} (${spec.maker} ${spec.model})`.trim();
+    }
+    if (badgeActiveEquip) {
+      badgeActiveEquip.textContent = `${spec.equip_name} (#${spec.equip_id})`;
+    }
+    if (badgeActiveMaker) {
+      badgeActiveMaker.textContent = `${spec.maker} ${spec.model}`.trim();
+    }
+    if (badgeActiveRadius) {
+      const rad = spec.radius ? `${spec.radius.toFixed(0)} m` : '-';
+      badgeActiveRadius.textContent = rad;
+    }
+    if (badgeActivePressure) {
+      const nomP = spec.nominal_pressure ? `${spec.nominal_pressure.toFixed(2)} bar` : '-';
+      badgeActivePressure.textContent = nomP;
+    }
+
+    // 2. Sync Copilot RAG Relational Specification Cards (Aba 2)
+    if (copilotSpecName) {
+      copilotSpecName.textContent = `${spec.equip_name} (#${spec.equip_id})`;
+    }
+    if (copilotSpecMaker) {
+      copilotSpecMaker.textContent = `${spec.maker} ${spec.model}`.trim();
+    }
+    if (copilotSpecFarm) {
+      const loc = spec.farm_city ? ` (${spec.farm_city}${spec.farm_state ? ', ' + spec.farm_state : ''})` : '';
+      copilotSpecFarm.textContent = `${spec.farm_name}${loc}`;
+    }
+    if (copilotSpecNomP) {
+      copilotSpecNomP.textContent = `${(spec.nominal_pressure || 3.4).toFixed(2)} bar`;
+    }
+    if (copilotSpecFlow) {
+      copilotSpecFlow.textContent = `${(spec.flow_rate || 185.0).toFixed(1)} m³/h`;
+    }
+    if (copilotSpecRadius) {
+      const ha = spec.area ? ` (${spec.area.toFixed(1)} ha)` : '';
+      copilotSpecRadius.textContent = `${(spec.radius || 380.0).toFixed(0)} m${ha}`;
+    }
+    if (copilotSpecDepth) {
+      const flow = spec.flow_rate || 185.0;
+      const areaHa = spec.area || 45.0;
+      const nomDepth = (flow * 18.0) / (areaHa * 10.0);
+      copilotSpecDepth.textContent = `${nomDepth.toFixed(1)} mm (Nominal)`;
+    }
+
+    // 3. Live field pressure in Copilot (clean format, no duplicate bar unit)
+    if (copilotSpecLiveP) {
+      let liveP = null;
+      if (tel && tel.pressure_begin !== undefined) {
+        liveP = tel.pressure_begin;
+      } else if (kpiPressure && kpiPressure.textContent) {
+        liveP = parseFloat(kpiPressure.textContent);
+      }
+      if (liveP !== null && !isNaN(liveP)) {
+        copilotSpecLiveP.textContent = `${liveP.toFixed(2)} bar`;
+      }
+    }
+  }
 
   function debounce(func, wait = 300) {
     let timeout;
@@ -591,7 +677,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function fetchFarms(searchQuery = "") {
     try {
-      const res = await fetch(`/api/catalog/farms?q=${encodeURIComponent(searchQuery)}&limit=100`);
+      const res = await fetch(`/api/catalog/farms?q=${encodeURIComponent(searchQuery)}&limit=300`);
       if (!res.ok) return;
       const farms = await res.json();
 
@@ -629,7 +715,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const typeCode = selectEquipType ? selectEquipType.value : "all";
       const q = inputEquipSearch ? inputEquipSearch.value : "";
 
-      let url = "/api/catalog/equipment?limit=100";
+      let url = "/api/catalog/equipment?limit=200";
       if (farmId) url += `&farm_id=${farmId}`;
       if (typeCode && typeCode !== "all") url += `&type_code=${typeCode}`;
       if (q && q.trim()) url += `&q=${encodeURIComponent(q.trim())}`;
@@ -677,7 +763,17 @@ document.addEventListener("DOMContentLoaded", () => {
       if (res.ok) {
         const data = await res.json();
         currentActiveEquipId = targetId;
-        addMcpLog(`[SCADA ATIVO ALTERADO] Equipamento #${targetId} selecionado com sucesso.`);
+        if (data.catalog_spec) {
+          currentActiveSpec = data.catalog_spec;
+        } else {
+          const specRes = await fetch(`/api/catalog/equipment/${targetId}`);
+          if (specRes.ok) currentActiveSpec = await specRes.json();
+        }
+        if (currentActiveSpec && currentActiveSpec.farm_id) {
+          currentSelectedFarmId = currentActiveSpec.farm_id;
+        }
+        syncActiveAssetUI(currentActiveSpec);
+        addMcpLog(`[SCADA ATIVO ALTERADO] #${targetId} ${currentActiveSpec ? currentActiveSpec.equip_name : ''} ativado.`);
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ action: "select_equipment", equip_id: targetId }));
         }
@@ -864,17 +960,8 @@ document.addEventListener("DOMContentLoaded", () => {
         appendCopilotMessage("Copiloto", renderedHtml, false);
 
         if (data.catalog_spec) {
-          const s = data.catalog_spec;
-          if (copilotSpecName) copilotSpecName.textContent = `${s.equip_name || 'Haak 1'} (#${s.equip_id || 14863})`;
-          if (copilotSpecMaker) copilotSpecMaker.textContent = `${s.maker || 'Valmont'} ${s.model || 'Valley 8000C'}`;
-          if (copilotSpecFarm) copilotSpecFarm.textContent = `${s.farm_name || 'VB Homestead'} (${s.farm_city || 'Sunnyside'})`;
-          if (copilotSpecNomP) copilotSpecNomP.textContent = `${(s.nominal_pressure || 3.4).toFixed(2)} bar`;
-          if (copilotSpecFlow) copilotSpecFlow.textContent = `${(s.flow_rate || 185.0).toFixed(1)} m³/h`;
-          if (copilotSpecRadius) copilotSpecRadius.textContent = `${(s.radius || 380.0).toFixed(0)} m (${(s.area || 45.0).toFixed(1)} ha)`;
-        }
-
-        if (data.telemetry_live && copilotSpecLiveP) {
-          copilotSpecLiveP.textContent = `${(data.telemetry_live.pressao_bar || 0).toFixed(2)} bar`;
+          currentActiveSpec = data.catalog_spec;
+          syncActiveAssetUI(currentActiveSpec, data.telemetry_live);
         }
 
         if (data.deficit_metrics && copilotSpecDepth) {
@@ -907,22 +994,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function updateCopilotCards() {
-    if (kpiPressure && copilotSpecLiveP) {
-      copilotSpecLiveP.textContent = kpiPressure.textContent + " bar";
+  async function updateCopilotCards() {
+    if (!currentActiveSpec) {
+      try {
+        const res = await fetch(`/api/catalog/equipment/${currentActiveEquipId || 14863}`);
+        if (res.ok) {
+          currentActiveSpec = await res.json();
+        }
+      } catch (e) {
+        console.warn("Falha ao buscar especificação ativa:", e);
+      }
     }
-    if (badgeActiveEquip && copilotSpecName) {
-      copilotSpecName.textContent = badgeActiveEquip.textContent;
-    }
-    if (badgeActiveMaker && copilotSpecMaker) {
-      copilotSpecMaker.textContent = badgeActiveMaker.textContent;
-    }
-    if (badgeActivePressure && copilotSpecNomP) {
-      copilotSpecNomP.textContent = badgeActivePressure.textContent;
-    }
-    if (badgeActiveRadius && copilotSpecRadius) {
-      copilotSpecRadius.textContent = badgeActiveRadius.textContent;
-    }
+    syncActiveAssetUI(currentActiveSpec);
   }
 
   if (copilotChatForm) {
@@ -996,8 +1079,31 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Initial boots
-
   initHighcharts();
   connectWebSocket();
-  fetchFarms().then(() => fetchEquipment());
+
+  // Initialize active asset from backend status first, then populate selectors
+  fetch("/api/status")
+    .then(r => r.json())
+    .then(status => {
+      if (status && status.current_telemetry && status.current_telemetry.id_equip) {
+        currentActiveEquipId = status.current_telemetry.id_equip;
+        if (status.current_telemetry.id_farm) {
+          currentSelectedFarmId = status.current_telemetry.id_farm;
+        }
+      }
+      return fetch(`/api/catalog/equipment/${currentActiveEquipId}`);
+    })
+    .then(r => r.json())
+    .then(spec => {
+      if (spec) {
+        currentActiveSpec = spec;
+        if (spec.farm_id) currentSelectedFarmId = spec.farm_id;
+        syncActiveAssetUI(currentActiveSpec);
+      }
+    })
+    .catch(err => console.warn("Erro ao obter ativo inicial:", err))
+    .finally(() => {
+      fetchFarms().then(() => fetchEquipment());
+    });
 });

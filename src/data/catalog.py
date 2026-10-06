@@ -204,7 +204,7 @@ class AssetCatalogService:
         except Exception as e:
             logger.error("failed_to_create_catalog_view", error=str(e))
 
-    def get_farms(self, search: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    def get_farms(self, search: str = "", limit: int = 300) -> list[dict[str, Any]]:
         """Returns list of farms matching search query with equipment count."""
         try:
             con = duckdb.connect(str(settings.duckdb_path), read_only=True)
@@ -238,6 +238,33 @@ class AssetCatalogService:
         except Exception as e:
             logger.error("error_querying_farms", error=str(e))
             return []
+
+    def get_farm_by_id(self, farm_id: int) -> dict[str, Any] | None:
+        """Returns single farm summary by farm_id."""
+        try:
+            con = duckdb.connect(str(settings.duckdb_path), read_only=True)
+            row = con.execute(f"""
+                SELECT
+                    farm_id, farm_name, farm_city, farm_state,
+                    COUNT(equip_id) as total_equips
+                FROM v_equipment_catalog
+                WHERE farm_id = {farm_id}
+                GROUP BY farm_id, farm_name, farm_city, farm_state
+                LIMIT 1
+            """).fetchone()
+            con.close()
+            if not row:
+                return None
+            return {
+                "farm_id": row[0],
+                "farm_name": row[1],
+                "farm_city": row[2],
+                "farm_state": row[3],
+                "total_equips": row[4],
+            }
+        except Exception as e:
+            logger.error("error_querying_farm_by_id", error=str(e), farm_id=farm_id)
+            return None
 
     def get_equipment_types(self) -> list[dict[str, str]]:
         """Returns supported equipment types."""

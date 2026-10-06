@@ -25,8 +25,13 @@ class TelemetryEvent(BaseModel):
     pressure_begin: float = Field(default=0.0, ge=0.0, description="Base/pivot head pressure in bar or mca")
     pressure_end: float = Field(default=0.0, ge=0.0, description="End tower pressure")
     flow_rate: float = Field(default=0.0, ge=0.0, description="Flow rate (m3/h or gpm)")
+    farm_city: str | None = None
+    farm_state: str | None = None
+    pivot_maker: str | None = None
+    pivot_model: str | None = None
     nominal_pressure: float | None = Field(default=None, description="Nominal service pressure from equipment registry")
     pivot_radius: float | None = Field(default=None, description="Pivot radius in meters")
+    area: float | None = Field(default=None, description="Irrigated area in hectares")
 
 
 class AnomalyReport(BaseModel):
